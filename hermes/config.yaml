@@ -1,0 +1,58 @@
+# Hermes Agent — CLI Configuration
+# Managed in ~/repo/mac-nix-agent/hermes/config.yaml
+# Mounted into the Apple Container VM at /opt/data/config.yaml
+
+# ── Model / Provider ─────────────────────────────────────
+# `default` must match an ID served by the provider below. List with:
+#   curl -s -H "Authorization: Bearer $(jq -r .auth.api_key ~/.omlx/settings.json)" \
+#        http://127.0.0.1:8000/v1/models | jq '.data[].id'
+# Or, inside `hermes` chat, type `/model` for an interactive picker.
+model:
+  default: "Qwen3.6-35B-A3B-oQ4"
+  provider: omlx
+  base_url: "http://192.168.64.1:8000/v1" # vmnet gateway → host
+  context_length: 128000
+
+fallback_model:
+  provider: ollama-cloud
+  model: "gemma4:31b"
+
+# ── Terminal ─────────────────────────────────────────────
+# backend: local — Hermes is already inside a container,
+# so "local" execution is sandboxed by the container boundary.
+terminal:
+  backend: local
+  cwd: "/opt/data/workspace"
+  timeout: 300
+  lifetime_seconds: 300
+
+# ── Web Search ───────────────────────────────────────────
+web:
+  search_backend: "searxng"
+
+# ── Security ─────────────────────────────────────────────
+approvals:
+  mode: smart
+
+# ── Memory ───────────────────────────────────────────────
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+
+# ── Providers ────────────────────────────────────
+# User-defined endpoints that auto-discover models via the OMLX API.
+# Models appear in the /model picker and sync automatically when
+# new models are loaded. API key is read from the OMLX_API_KEY env
+# var (set by .env), so it never enters version control. We use a
+# dedicated name (not OPENAI_API_KEY) so Hermes doesn't mistake us
+# for an authenticated OpenAI/OpenRouter user in the picker.
+providers:
+  omlx:
+    name: "oMLX (local)"
+    base_url: "http://192.168.64.1:8000/v1" # vmnet gateway → host
+    key_env: "OMLX_API_KEY"
+
+# ── Agent ────────────────────────────────────────
+agent:
+  max_turns: 60
+  reasoning_effort: "medium"

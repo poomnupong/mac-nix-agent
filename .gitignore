@@ -1,0 +1,17 @@
+result
+
+# Hermes secrets (contains API keys)
+hermes/.env
+
+# Hermes runtime data (sessions, state.db, agent memories — all private)
+# Dir is re-created by run.sh on first `hermes-up`.
+hermes/data/
+
+# Hermes workspace (user I/O files)
+hermes/workspace/
+
+# Local customizations (per-machine, not for upstream)
+hermes/config.yaml.custom
+
+# macOS
+.DS_Store
