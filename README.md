@@ -11,6 +11,8 @@ This repo is a declarative, end-to-end recipe for turning a fresh M-series Mac i
 
 The goal: clone the repo, run `./bootstrap.sh`, and have a working `hermes` chat against a locally hosted MLX model on the same Mac. Everything is reproducible — wipe the machine, re-run the script, get the same setup. No cloud dependency by default; cloud LLMs are a one-line config swap.
 
+> **Philosophy.** This repo is meant to **accelerate your learning** of the Apple-silicon AI toolchain, not hide it from you. Lifecycle plumbing (`hermes-up`, `darwin-rebuild switch`) is aliased because it's plumbing. Workflow commands you should understand — model downloads, format conversion, abliteration, quantization — are **deliberately not aliased**. See [`modelops/`](modelops/README.md) for the modelops tutorial.
+
 ## Quick start
 
 Fresh Mac? One command:

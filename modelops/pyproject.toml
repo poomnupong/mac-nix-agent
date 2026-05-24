@@ -1,0 +1,29 @@
+[project]
+name = "modelops"
+version = "0.1.0"
+description = "Mac-silicon modelops workspace: download, convert, abliterate, quantize."
+requires-python = ">=3.12,<3.13"
+
+# Default contract: safetensors in (HF or mlx-community), MLX safetensors out.
+# GGUF is not a supported input format here — use llama.cpp tooling instead.
+dependencies = [
+  # HuggingFace CLI (`hf download`, `hf upload`) + Rust-based fast transfers.
+  # The CLI is bundled in huggingface-hub >=1.0; hf-transfer is a separate pkg
+  # (enabled at runtime via `export HF_HUB_ENABLE_HF_TRANSFER=1`).
+  "huggingface-hub>=1.0",
+  "hf-transfer>=0.1.8",
+
+  # mlx-lm: HF -> MLX format conversion, naive/mxfp8 quant as a baseline.
+  # oQ (the recommended quantizer) runs inside oMLX, not here.
+  "mlx-lm>=0.20",
+
+  # Heretic: automated abliteration. Optional in workflow, but installed
+  # so it is ready to use. Tracks `main`; uv.lock pins the resolved commit.
+  # Bump with:  uv lock --upgrade-package heretic-llm
+  "heretic-llm @ git+https://github.com/p-e-w/heretic.git",
+]
+
+# To enable the Rust-based fast download path for HuggingFace, set:
+#   export HF_HUB_ENABLE_HF_TRANSFER=1
+# in your shell (or prefix individual commands). The `hf_transfer` extra above
+# installs the dependency; the env var activates it.

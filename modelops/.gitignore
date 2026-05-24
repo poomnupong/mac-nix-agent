@@ -1,0 +1,16 @@
+# uv-managed virtualenv
+.venv/
+
+# Local model + artifact stores (large, machine-specific) — keep dirs, ignore contents
+models/*
+outputs/*
+!models/.gitkeep
+!outputs/.gitkeep
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Editor scratch
+.DS_Store

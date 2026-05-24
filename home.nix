@@ -27,6 +27,11 @@
     mosh
     rclone
 
+    # Modelops toolchain (see modelops/README.md)
+    uv                              # Python project + venv manager
+    python3Packages.huggingface-hub # `hf` CLI for downloads/uploads
+    llama-cpp                       # GGUF tooling (llama-quantize, llama-cli, etc.)
+
     # Fonts (Nerd Fonts)
     nerd-fonts.fira-code
   ];
@@ -46,6 +51,10 @@
       hermes-down = "~/repo/mac-nix-agent/hermes/run.sh down";
       hermes-logs = "container logs -f hermes-agent";
       hermes-rebuild = "~/repo/mac-nix-agent/hermes/run.sh rebuild";
+
+      # Modelops: cd bookmark only. Workflow commands are intentionally NOT aliased
+      # — see modelops/README.md and run them yourself to learn the toolchain.
+      modelops = "cd ~/repo/mac-nix-agent/modelops";
     };
   };
 
