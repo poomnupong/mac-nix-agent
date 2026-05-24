@@ -183,7 +183,30 @@ command -v jq >/dev/null 2>&1 || die "jq is required (installed by nix-darwin ho
 
 needs_restart=0
 host="$(jq -r '.server.host // empty' "$omlx_settings")"
-key="$(jq -r '.auth.api_key // empty'  "$omlx_settings")"
+settings_key="$(jq -r '.auth.api_key // empty' "$omlx_settings")"
+[ "$settings_key" = "null" ] && settings_key=""
+
+# Read existing key from hermes/.env if present — fallback source of truth
+# so a wiped settings.json (oMLX upgrade, manual reset) doesn't silently
+# invalidate the key already in use by clients.
+env_key=""
+if [ -f "$REPO_DIR/hermes/.env" ]; then
+    env_key="$(awk -F= '/^OMLX_API_KEY=/ { sub(/^OMLX_API_KEY=/, ""); print; exit }' "$REPO_DIR/hermes/.env")"
+fi
+
+# Precedence:
+#   1. settings.json has a key  → use it (oMLX is the auth server)
+#   2. .env has a key           → reuse it (don't break existing clients)
+#   3. neither                  → generate a new one
+if [ -n "$settings_key" ]; then
+    key="$settings_key"
+elif [ -n "$env_key" ]; then
+    key="$env_key"
+    log "Reusing OMLX_API_KEY from hermes/.env (settings.json was missing it)"
+else
+    key="omlx-sk-$(openssl rand -hex 24)"
+    log "Generating new oMLX API key"
+fi
 
 if [ "$host" != "0.0.0.0" ]; then
     log "Setting oMLX bind host = 0.0.0.0"
@@ -192,9 +215,8 @@ if [ "$host" != "0.0.0.0" ]; then
     needs_restart=1
 fi
 
-if [ -z "$key" ] || [ "$key" = "null" ]; then
-    key="omlx-sk-$(openssl rand -hex 24)"
-    log "Generating oMLX API key (stored in .auth.api_key)"
+if [ "$settings_key" != "$key" ]; then
+    log "Writing oMLX API key into settings.json"
     tmp="$(mktemp)"
     jq --arg k "$key" '.auth.api_key = $k | .auth.skip_api_key_verification = false' \
         "$omlx_settings" > "$tmp" && mv "$tmp" "$omlx_settings"
