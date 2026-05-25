@@ -17,6 +17,12 @@ dependencies = [
   # oQ (the recommended quantizer) runs inside oMLX, not here.
   "mlx-lm>=0.20",
 
+  # mlx-vlm: same role as mlx-lm but for vision-language models (Qwen2-VL,
+  # LLaVA, Pixtral, Gemma-VL, Phi-3.5-Vision, ...). Provides `mlx_vlm.convert`
+  # for HF -> MLX format adapt + naive quant, and `mlx_vlm.generate` /
+  # `mlx_vlm.chat` for smoke-testing multimodal outputs before serving.
+  "mlx-vlm>=0.1",
+
   # Heretic: automated abliteration. Optional in workflow, but installed
   # so it is ready to use. Tracks `main`; uv.lock pins the resolved commit.
   # Bump with:  uv lock --upgrade-package heretic-llm

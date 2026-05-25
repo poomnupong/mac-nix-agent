@@ -12,6 +12,7 @@ A reproducible Python environment (managed by [`uv`](https://docs.astral.sh/uv/)
 |------|------|
 | `hf` (huggingface-hub) | Download models from HuggingFace, upload your outputs back |
 | `mlx_lm.convert` | HF safetensors → MLX safetensors (format adapt), plus a baseline naive quantizer including `mxfp8` |
+| `mlx_vlm.convert` / `mlx_vlm.generate` | Same role as `mlx_lm`, but for **vision-language models** (Qwen2-VL, LLaVA, Pixtral, Gemma-VL, Phi-3.5-Vision, …). Use for VLM format-adapt + smoke-testing image+text generation |
 | `heretic` | Automated [abliteration](https://github.com/p-e-w/heretic) (optional in the workflow; pre-installed so it's ready when you want it) |
 
 System-level (installed via Nix, available everywhere):
@@ -59,6 +60,7 @@ Sanity-check:
 ```bash
 uv run hf --help
 uv run mlx_lm.convert --help
+uv run mlx_vlm.convert --help
 uv run heretic --help
 ```
 
@@ -94,13 +96,32 @@ export HF_HUB_ENABLE_HF_TRANSFER=1
 
 ### 2. Convert HF → MLX (only if your source is raw HF, not `mlx-community/*`)
 
+For text-only LLMs:
+
 ```bash
 uv run mlx_lm.convert \
   --hf-path models/qwen-coder-32b-hf \
   --mlx-path outputs/qwen-coder-32b-mlx
 ```
 
-This is a **format adapter**, not a quantizer — leave `-q` off. Output is bf16/fp16 MLX safetensors.
+For **vision-language models** (Qwen2-VL, LLaVA, Pixtral, Gemma-VL, Phi-3.5-Vision, …), swap in `mlx_vlm.convert` — same flag shape, but it also carries the vision tower / image processor across:
+
+```bash
+uv run mlx_vlm.convert \
+  --hf-path models/qwen2-vl-7b-hf \
+  --mlx-path outputs/qwen2-vl-7b-mlx
+```
+
+Smoke-test the converted VLM end-to-end with an image:
+
+```bash
+uv run mlx_vlm.generate \
+  --model outputs/qwen2-vl-7b-mlx \
+  --image path/to/image.jpg \
+  --prompt "Describe this image."
+```
+
+Both `mlx_lm.convert` and `mlx_vlm.convert` are **format adapters**, not quantizers — leave `-q` off here. Output is bf16/fp16 MLX safetensors.
 
 ### 3. (Optional) Abliterate with Heretic
 
