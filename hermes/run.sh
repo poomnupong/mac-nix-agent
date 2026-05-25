@@ -53,12 +53,41 @@ ensure_image() {
     fi
 }
 
+# Reconcile OMLX_API_KEY in hermes/.env with the live key oMLX is enforcing
+# in ~/.omlx/settings.json. oMLX is the auth server, so its key wins.
+#
+# This closes the drift gap left by bootstrap.sh being a one-shot: brew
+# upgrades, admin-UI "regenerate key", or a recreated settings.json on
+# reboot can all change settings.json without touching .env, leaving the
+# container authenticating with a stale key.
+sync_omlx_key() {
+    local settings="$HOME/.omlx/settings.json"
+    local envfile="${SCRIPT_DIR}/.env"
+    [ -f "$settings" ] || return 0
+    [ -f "$envfile" ]  || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+
+    local srv_key env_key
+    srv_key="$(jq -r '.auth.api_key // empty' "$settings" 2>/dev/null)"
+    [ -n "$srv_key" ] || return 0
+
+    env_key="$(awk -F= '/^OMLX_API_KEY=/ { sub(/^OMLX_API_KEY=/, ""); print; exit }' "$envfile")"
+    if [ "$srv_key" != "$env_key" ]; then
+        echo "Syncing OMLX_API_KEY from ~/.omlx/settings.json -> hermes/.env"
+        sed -i.bak "s|^OMLX_API_KEY=.*|OMLX_API_KEY=${srv_key}|" "$envfile"
+        rm -f "${envfile}.bak"
+    fi
+}
+
 # ── Commands ─────────────────────────────────────────────
 cmd_up() {
     echo "Starting Hermes workspace..."
 
     # Ensure container system is running (needed after reboot)
     ensure_system
+
+    # Reconcile OMLX_API_KEY with the live oMLX server before launch
+    sync_omlx_key
 
     # Build custom image if needed
     ensure_image
