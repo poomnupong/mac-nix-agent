@@ -1,5 +1,10 @@
 result
 
+# Per-machine flake personalization (username, hostname). Written by
+# bootstrap.sh; flake.nix imports it via `builtins.pathExists` so the
+# tracked flake stays clean for upstream pulls.
+local.nix
+
 # Hermes secrets (contains API keys)
 hermes/.env
 

@@ -8,7 +8,7 @@
 #        http://127.0.0.1:8000/v1/models | jq '.data[].id'
 # Or, inside `hermes` chat, type `/model` for an interactive picker.
 model:
-  default: "gemma-4-26b-a4b-it-4bit"
+  default: "mlx-community/gemma-4-26b-a4b-it-4bit"
   provider: omlx
   base_url: "http://192.168.64.1:8000/v1" # vmnet gateway → host
   # Must be ≤ the per-model `max_context_window` configured in oMLX

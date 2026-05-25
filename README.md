@@ -24,7 +24,7 @@ cd ~/repo/mac-nix-agent && ./bootstrap.sh
 
 `bootstrap.sh` is idempotent — safe to re-run. It installs Nix, Homebrew, the Apple `container` runtime, applies the nix-darwin flake, seeds oMLX (host + API key), and brings up the Hermes container.
 
-> **Note:** `bootstrap.sh` rewrites `flake.nix`'s `username` and `hostname` in place. After first run you'll see `flake.nix` as modified in `git status` — that's expected. Don't commit those local values back upstream; if you forked, keep your fork's `flake.nix` on the placeholders and let `bootstrap.sh` personalize on each clone.
+> **Note:** `bootstrap.sh` writes a gitignored `local.nix` with your `username` and `hostname` (read by `flake.nix`). The tracked `flake.nix` stays on placeholders, so `git status` stays clean and upstream pulls don't conflict. Delete `local.nix` to reset to defaults.
 
 Already bootstrapped? Day-to-day commands:
 
@@ -300,7 +300,7 @@ cd ~/repo/mac-nix-agent
 The script is idempotent. Each step is skipped if already satisfied:
 
 1. Sanity checks (macOS 26+ Apple silicon)
-2. Personalize `flake.nix` (username + hostname from your machine)
+2. Write `local.nix` (username + hostname from your machine)
 3. Prompt for git `user.name` / `user.email` if `~/.gitconfig` doesn't have them yet
 4. Install Determinate Nix
 5. Install Homebrew
@@ -328,13 +328,15 @@ git clone https://github.com/<your-github-username>/mac-nix-agent.git ~/repo/mac
 cd ~/repo/mac-nix-agent
 ```
 
-#### 3. Personalize `flake.nix` (auto-done by bootstrap.sh)
+#### 3. Write `local.nix` (auto-done by bootstrap.sh)
 
-`flake.nix` declares your macOS user and hostname so nix-darwin knows which configuration to apply. `bootstrap.sh` sets these from `id -un` and `scutil --get LocalHostName` automatically. To do it manually, edit the `let` block at the top of `flake.nix`:
+`flake.nix` reads per-machine identity from a gitignored `./local.nix`. `bootstrap.sh` generates it from `id -un` and `scutil --get LocalHostName`. To do it manually, create `local.nix` at the repo root:
 
 ```nix
-username = "your-username";   # e.g. "alice"
-hostname = "your-hostname";   # e.g. "alice-mbp"
+{
+  username = "your-username";   # e.g. "alice"
+  hostname = "your-hostname";   # e.g. "alice-mbp"
+}
 ```
 
 Then ensure your Mac's `LocalHostName` matches:
