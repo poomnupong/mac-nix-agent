@@ -188,9 +188,24 @@ oMLX is installed via Homebrew (`jundot/omlx/omlx`) and run by brew's stock laun
 `bootstrap.sh` leaves oMLX running but **with no model loaded** — the repo doesn't ship weights. Pull one from the admin UI:
 
 1. Open <http://127.0.0.1:8000/admin> and log in with the key from `~/.omlx/settings.json` (`jq -r .auth.api_key ~/.omlx/settings.json`).
-2. Go to **Models → Download** and search Hugging Face for an MLX-format model. A good de-facto Gemma-class starter on Apple silicon:
+2. Go to **Models → Download** and paste a Hugging Face repo ID. Pick a Gemma 4 MLX `mxfp8` build that fits your Mac's unified memory — leave at least ~8 GB headroom for the OS, KV cache at 32k, and any other apps:
 
-   - Repo: [`mlx-community/gemma-4-26b-a4b-it-4bit`](https://huggingface.co/mlx-community/gemma-4-26b-a4b-it-4bit) — Gemma 4 26B-A4B MoE, instruction-tuned, MLX 4-bit. Roughly ~15 GB on disk; runs comfortably on a 32 GB Mac and leaves room for a long context on 64 GB.
+   | Hugging Face repo | Type | ~Disk | Min RAM | Comfortable on |
+   |---|---|---:|---:|---:|
+   | [`mlx-community/gemma-4-e2b-it-mxfp8`](https://huggingface.co/mlx-community/gemma-4-e2b-it-mxfp8) | dense (2B-effective) | ~5 GB | 8 GB | 16 GB |
+   | [`mlx-community/gemma-4-e4b-it-mxfp8`](https://huggingface.co/mlx-community/gemma-4-e4b-it-mxfp8) | dense (4B-effective) | ~7 GB | 16 GB | 24 GB+ |
+   | [`mlx-community/gemma-4-26b-a4b-it-mxfp8`](https://huggingface.co/mlx-community/gemma-4-26b-a4b-it-mxfp8) | MoE (26B total / 4B active) | ~28 GB | 36 GB | 48 GB+ |
+   | [`mlx-community/gemma-4-31b-it-mxfp8`](https://huggingface.co/mlx-community/gemma-4-31b-it-mxfp8) | dense | ~33 GB | 48 GB | 64 GB+ |
+
+   **Picking by Mac RAM** (assumes the model is the only large workload — close LM Studio, ComfyUI, large IDE projects, etc.):
+
+   - **8 GB:** `gemma-4-e2b-it-mxfp8` only. Drop `context_length` to 8192–16384 in `hermes/config.yaml` and the matching `max_context_window` in oMLX (see below) if you hit OOM.
+   - **16 GB:** `gemma-4-e4b-it-mxfp8` is the sweet spot; `e2b` for snappier responses.
+   - **24–32 GB:** `gemma-4-e4b-it-mxfp8` reliably; `gemma-4-26b-a4b-it-mxfp8` works but expect swapping under long contexts — keep the window at 32k or lower and close other heavy apps.
+   - **36–48 GB:** `gemma-4-26b-a4b-it-mxfp8` is the default pick. MoE keeps active compute small while quality stays near 31B-dense.
+   - **64 GB+:** Any of them. `gemma-4-31b-it-mxfp8` for strongest single-pass quality; `gemma-4-26b-a4b-it-mxfp8` for faster throughput.
+
+   The pre-configured default in [`hermes/config.yaml`](hermes/config.yaml) is `mlx-community/gemma-4-26b-a4b-it-mxfp8`. Edit it if you pick a different variant.
 
 3. Hit **Download** and wait. Progress is visible in the UI; files land under `~/.omlx/models/`.
 4. Click **Load** on the new model. Verify it's serving:
@@ -200,8 +215,8 @@ oMLX is installed via Homebrew (`jundot/omlx/omlx`) and run by brew's stock laun
    curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:8000/v1/models | jq '.data[].id'
    ```
 
-5. Update `model.default` in [`hermes/config.yaml`](hermes/config.yaml) to the returned ID (the placeholder there will not match your model), then `hermes-rebuild`.
-6. Optionally tweak that model's `max_context_window` — see [oMLX — context window](#omlx--context-window) below.
+5. If the returned ID doesn't match `model.default` in [`hermes/config.yaml`](hermes/config.yaml), update it, then `hermes-rebuild`.
+6. Optionally tweak that model's `max_context_window` — see [oMLX — context window](#omlx--context-window) below. Smaller-RAM Macs should also lower `model.context_length` to match.
 
 Once a model is loaded and `hermes/config.yaml` points at it, `hermes` chats work end-to-end.
 
