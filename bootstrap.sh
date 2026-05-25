@@ -11,7 +11,7 @@
 #   5. Install Homebrew                     (skip if `brew` present)
 #   6. Apply nix-darwin flake               (always — picks up local changes)
 #   7. Install/upgrade Apple `container`    (latest release from GitHub)
-#   8. Configure oMLX (bind + key)          (skip if already configured)
+#   8. Configure oMLX (bind + key + 32k global ctx) (skip if already)
 #   9. Seed hermes/.env from .env.example   (skip if .env exists)
 #  10. Start Hermes container               (via hermes-rebuild)
 #
@@ -221,6 +221,20 @@ if [ "$settings_key" != "$key" ]; then
     jq --arg k "$key" '.auth.api_key = $k | .auth.skip_api_key_verification = false' \
         "$omlx_settings" > "$tmp" && mv "$tmp" "$omlx_settings"
     chmod 600 "$omlx_settings"
+    needs_restart=1
+fi
+
+# Global sampling fallback for any model without an explicit per-model
+# `max_context_window`. We pin 32768 to match `hermes/config.yaml`'s
+# `model.context_length`. Per-model overrides remain the user's
+# responsibility — set them from the oMLX admin UI after downloading
+# a model (Models → <model> → Settings → max_context_window). The repo
+# deliberately does NOT pre-pin settings for models it doesn't ship.
+global_ctx="$(jq -r '.sampling.max_context_window // empty' "$omlx_settings")"
+if [ "$global_ctx" != "32768" ]; then
+    log "Setting oMLX global sampling.max_context_window = 32768"
+    tmp="$(mktemp)"
+    jq '.sampling.max_context_window = 32768' "$omlx_settings" > "$tmp" && mv "$tmp" "$omlx_settings"
     needs_restart=1
 fi
 

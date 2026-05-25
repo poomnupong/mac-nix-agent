@@ -8,10 +8,14 @@
 #        http://127.0.0.1:8000/v1/models | jq '.data[].id'
 # Or, inside `hermes` chat, type `/model` for an interactive picker.
 model:
-  default: "gemma-4-26B-A4B-it-oQ4"
+  default: "gemma-4-26b-a4b-it-4bit"
   provider: omlx
   base_url: "http://192.168.64.1:8000/v1" # vmnet gateway → host
-  context_length: 64000
+  # Must be ≤ the per-model `max_context_window` configured in oMLX
+  # (admin UI → Models → <model> → Settings). Falls back to the global
+  # `.sampling.max_context_window` in ~/.omlx/settings.json (bootstrap.sh
+  # pins this to 32768).
+  context_length: 32768
 
 fallback_model:
   provider: ollama-cloud

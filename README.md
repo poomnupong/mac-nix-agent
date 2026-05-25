@@ -183,6 +183,50 @@ oMLX is installed via Homebrew (`jundot/omlx/omlx`) and run by brew's stock laun
 
 `bootstrap.sh` seeds both on first run and writes the same key into `hermes/.env` as `OMLX_API_KEY`.
 
+### Download your first model
+
+`bootstrap.sh` leaves oMLX running but **with no model loaded** — the repo doesn't ship weights. Pull one from the admin UI:
+
+1. Open <http://127.0.0.1:8000/admin> and log in with the key from `~/.omlx/settings.json` (`jq -r .auth.api_key ~/.omlx/settings.json`).
+2. Go to **Models → Download** and search Hugging Face for an MLX-format model. A good de-facto Gemma-class starter on Apple silicon:
+
+   - Repo: [`mlx-community/gemma-4-26b-a4b-it-4bit`](https://huggingface.co/mlx-community/gemma-4-26b-a4b-it-4bit) — Gemma 4 26B-A4B MoE, instruction-tuned, MLX 4-bit. Roughly ~15 GB on disk; runs comfortably on a 32 GB Mac and leaves room for a long context on 64 GB.
+
+3. Hit **Download** and wait. Progress is visible in the UI; files land under `~/.omlx/models/`.
+4. Click **Load** on the new model. Verify it's serving:
+
+   ```bash
+   KEY=$(jq -r .auth.api_key ~/.omlx/settings.json)
+   curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:8000/v1/models | jq '.data[].id'
+   ```
+
+5. Update `model.default` in [`hermes/config.yaml`](hermes/config.yaml) to the returned ID (the placeholder there will not match your model), then `hermes-rebuild`.
+6. Optionally tweak that model's `max_context_window` — see [oMLX — context window](#omlx--context-window) below.
+
+Once a model is loaded and `hermes/config.yaml` points at it, `hermes` chats work end-to-end.
+
+### oMLX — context window
+
+`hermes/config.yaml`'s `model.context_length` (32768) caps what Hermes sends to oMLX. On the oMLX side, the effective ceiling is the **per-model** `max_context_window` in `~/.omlx/model_settings.json`, falling back to the **global** `.sampling.max_context_window` in `~/.omlx/settings.json`. `bootstrap.sh` pins the global fallback to 32768 so any freshly downloaded model works out of the box at 32k.
+
+Per-model overrides are **your call** — there's no `omlx` CLI for this, and the repo deliberately doesn't pre-pin settings for models it doesn't ship. To override:
+
+- **Recommended:** Admin UI → Models → `<model>` → Settings → set `max_context_window` (and `max_tokens`).
+- **Programmatic** (admin endpoints use a session cookie, not Bearer auth):
+
+  ```bash
+  KEY=$(jq -r .auth.api_key ~/.omlx/settings.json)
+  JAR=$(mktemp)
+  curl -s -c "$JAR" -X POST "http://127.0.0.1:8000/admin/api/login" \
+    -H "Content-Type: application/json" -d "{\"api_key\":\"$KEY\"}" >/dev/null
+  curl -sX PUT -b "$JAR" "http://127.0.0.1:8000/admin/api/models/<model-id>/settings" \
+    -H "Content-Type: application/json" \
+    -d '{"max_context_window": 32768, "max_tokens": 8192}' | jq
+  rm -f "$JAR"
+  ```
+
+When raising the window above 32k, also bump `model.context_length` in [`hermes/config.yaml`](hermes/config.yaml) to match (it must stay ≤ the oMLX value).
+
 Verify:
 
 ```bash
@@ -262,7 +306,7 @@ The script is idempotent. Each step is skipped if already satisfied:
 5. Install Homebrew
 6. `sudo darwin-rebuild switch --flake .`
 7. Install or upgrade Apple `container` runtime (latest release from GitHub)
-8. Seed `~/.omlx/settings.json` with `host=0.0.0.0` + generated API key
+8. Seed `~/.omlx/settings.json` with `host=0.0.0.0`, generated API key, and `sampling.max_context_window=32768`
 9. Create `hermes/.env` from `.env.example` and sync `OMLX_API_KEY`
 10. `hermes/run.sh rebuild`
 
