@@ -19,6 +19,7 @@
 
     # Media
     ffmpeg
+    pdf2svg
 
     # Cloud
     azure-cli
