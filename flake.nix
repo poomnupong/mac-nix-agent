@@ -24,7 +24,12 @@
     # on first run from `id -un` and `scutil --get LocalHostName`. To
     # override manually, create ./local.nix with:
     #   { username = "jane"; hostname = "jane-mbp"; }
-    # then `sudo darwin-rebuild switch --flake .`.
+    # then `git add --intent-to-add local.nix && sudo darwin-rebuild switch --flake .`.
+    #
+    # NOTE: `git add --intent-to-add` (done by bootstrap.sh) is required.
+    # `--flake .` evaluates from the git tree, which excludes gitignored
+    # files; without staging it, darwinConfigurations.<hostname> is absent
+    # and darwin-rebuild fails to find the current machine's config.
     defaults = { username = "your-username"; hostname = "your-hostname"; };
     local    = if builtins.pathExists ./local.nix then import ./local.nix else {};
     cfg      = defaults // local;

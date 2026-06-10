@@ -46,6 +46,14 @@
       autoUpdate = true;
       upgrade    = true;
       cleanup    = "zap";
+      # Homebrew >= 5.1 refuses `brew bundle --cleanup` unless one of
+      # --force / --force-cleanup / $HOMEBREW_ASK is also passed (it now
+      # asks for confirmation before removing unlisted formulae/casks).
+      # nix-darwin runs activation non-interactively, so pass --force to
+      # auto-confirm the cleanup and avoid:
+      #   Error: Invalid usage: `brew bundle install --cleanup` requires
+      #   `--force`, `--force-cleanup` or `$HOMEBREW_ASK`.
+      extraFlags = [ "--force" ];
     };
     taps = [
       {

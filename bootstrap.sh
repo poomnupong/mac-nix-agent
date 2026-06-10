@@ -72,6 +72,18 @@ else
     log "local.nix already matches $current_user @ $current_host — skipping."
 fi
 
+# Make the gitignored local.nix visible to the `git+file` flake.
+# `darwin-rebuild switch --flake <repo>` evaluates the flake from the git
+# tree, which excludes gitignored files. Without this, the flake exposes
+# only darwinConfigurations.<placeholder>, and darwin-rebuild (which looks
+# up the config by the machine's hostname) fails with:
+#   error: flake ... does not provide attribute '...darwinConfigurations.<host>.system'
+# Staging with --intent-to-add pulls local.nix's working-tree content into
+# the flake source WITHOUT committing it, so `git status`/upstream stay clean.
+if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$REPO_DIR" add --intent-to-add --force local.nix 2>/dev/null || true
+fi
+
 # ── 3. Git identity (prompt only if missing) ─────────────
 # We deliberately do NOT manage git identity via home-manager: it would
 # stomp ~/.gitconfig on every darwin-rebuild and leak PII back into the

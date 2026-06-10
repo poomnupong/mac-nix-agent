@@ -24,7 +24,7 @@ cd ~/repo/mac-nix-agent && ./bootstrap.sh
 
 `bootstrap.sh` is idempotent — safe to re-run. It installs Nix, Homebrew, the Apple `container` runtime, applies the nix-darwin flake, seeds oMLX (host + API key), and brings up the Hermes container.
 
-> **Note:** `bootstrap.sh` writes a gitignored `local.nix` with your `username` and `hostname` (read by `flake.nix`). The tracked `flake.nix` stays on placeholders, so `git status` stays clean and upstream pulls don't conflict. Delete `local.nix` to reset to defaults.
+> **Note:** `bootstrap.sh` writes a gitignored `local.nix` with your `username` and `hostname` (read by `flake.nix`). The tracked `flake.nix` stays on placeholders, so upstream pulls don't conflict. `bootstrap.sh` also `git add --intent-to-add`s `local.nix` (so it shows as `A` in `git status`, never committed unless you explicitly `git commit local.nix`) — this is required because `darwin-rebuild --flake <repo>` evaluates the flake from the **git tree**, which excludes gitignored files. Without staging it, the flake would expose only the placeholder host and fail with `does not provide attribute '…darwinConfigurations.<host>.system'`. Delete `local.nix` and run `git reset local.nix` to revert to defaults.
 
 Already bootstrapped? Day-to-day commands:
 
