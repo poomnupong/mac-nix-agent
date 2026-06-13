@@ -1,0 +1,86 @@
+#!/bin/bash
+# mac-nix-agent — oMLX service control
+#
+# Thin, memorable wrapper over the Homebrew-managed oMLX service so you
+# don't have to retype `brew services ... jundot/omlx/omlx` (and so brew
+# is always loaded onto PATH first — home-manager's rc doesn't do it).
+#
+# Usage: mna-omlx <command>
+#   status     version, service state, port, API health, served models
+#   start      start the service
+#   stop       stop the service
+#   restart    restart the service (do this after every upgrade)
+#   logs       tail -f the oMLX log
+#   models     list models the server is currently serving
+#   upgrade    brew upgrade oMLX (verbose) then restart onto the new binary
+#   key        print the API key from ~/.omlx/settings.json
+
+set -euo pipefail
+
+SERVICE="jundot/omlx/omlx"
+PORT=8000
+LOG="/opt/homebrew/var/log/omlx.log"
+SETTINGS="$HOME/.omlx/settings.json"
+
+# ── Load Homebrew onto PATH ──────────────────────────────
+if ! command -v brew >/dev/null 2>&1; then
+    for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        [ -x "$b" ] && eval "$("$b" shellenv)" && break
+    done
+fi
+command -v brew >/dev/null 2>&1 || { echo "brew not found on PATH." >&2; exit 1; }
+
+log() { printf "\033[1;34m==>\033[0m %s\n" "$*"; }
+
+api_key() {
+    [ -f "$SETTINGS" ] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+    jq -r '.auth.api_key // empty' "$SETTINGS"
+}
+
+cmd_status() {
+    log "Version"
+    brew list --versions "$SERVICE" 2>/dev/null || echo "  (not installed)"
+    log "Service"
+    brew services list 2>/dev/null | awk 'NR==1 || $1=="omlx"'
+    log "Port :$PORT"
+    lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || echo "  (nothing listening)"
+    log "API"
+    local key code
+    key="$(api_key || true)"
+    code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' \
+        -H "Authorization: Bearer ${key:-}" "http://127.0.0.1:$PORT/v1/models" 2>/dev/null)"
+    echo "  http://127.0.0.1:$PORT/v1/models → HTTP ${code:-000}"
+}
+
+cmd_models() {
+    local key
+    key="$(api_key)" || { echo "No API key in $SETTINGS." >&2; exit 1; }
+    curl -s -m 5 -H "Authorization: Bearer $key" "http://127.0.0.1:$PORT/v1/models" \
+        | jq -r '.data[].id' 2>/dev/null || { echo "Server not answering on :$PORT." >&2; exit 1; }
+}
+
+cmd_upgrade() {
+    log "Upgrading oMLX (verbose)..."
+    brew update
+    if brew outdated --quiet 2>/dev/null | grep -q '/omlx$\|^omlx$'; then
+        brew upgrade --verbose "$SERVICE"
+        log "Restarting oMLX onto the new binary..."
+        brew services restart "$SERVICE"
+    else
+        log "oMLX already up to date."
+    fi
+}
+
+case "${1:-status}" in
+    status)  cmd_status ;;
+    start)   brew services start   "$SERVICE" ;;
+    stop)    brew services stop    "$SERVICE" ;;
+    restart) brew services restart "$SERVICE" ;;
+    logs)    exec tail -f "$LOG" ;;
+    models)  cmd_models ;;
+    upgrade) cmd_upgrade ;;
+    key)     api_key || { echo "No API key found in $SETTINGS." >&2; exit 1; } ;;
+    -h|--help) sed -n '2,16p' "$0" ;;
+    *) echo "Usage: mna-omlx {status|start|stop|restart|logs|models|upgrade|key}" >&2; exit 1 ;;
+esac

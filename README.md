@@ -9,9 +9,9 @@ This repo is a declarative, end-to-end recipe for turning a fresh M-series Mac i
 - **[oMLX](https://github.com/jundot/omlx)** — multi-model MLX inference server, OpenAI-compatible API on `localhost:8000`
 - **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** in an Apple `container` microVM — chat-driven coding agent with built-in SearXNG, browser, and shell tools, talking to oMLX over the vmnet bridge
 
-The goal: clone the repo, run `./bootstrap.sh`, and have a working `hermes` chat against a locally hosted MLX model on the same Mac. Everything is reproducible — wipe the machine, re-run the script, get the same setup. No cloud dependency by default; cloud LLMs are a one-line config swap.
+The goal: clone the repo, run `./bin/mna-bootstrap`, and have a working `mna-hermes` chat against a locally hosted MLX model on the same Mac. Everything is reproducible — wipe the machine, re-run the script, get the same setup. No cloud dependency by default; cloud LLMs are a one-line config swap.
 
-> **Philosophy.** This repo is meant to **accelerate your learning** of the Apple-silicon AI toolchain, not hide it from you. Lifecycle plumbing (`hermes-up`, `darwin-rebuild switch`) is aliased because it's plumbing. Workflow commands you should understand — model downloads, format conversion, abliteration, quantization — are **deliberately not aliased**. See [`modelops/`](modelops/README.md) for the modelops tutorial.
+> **Philosophy.** This repo is meant to **accelerate your learning** of the Apple-silicon AI toolchain, not hide it from you. Lifecycle plumbing (`mna-hermes up`, `darwin-rebuild switch`) is wrapped because it's plumbing. Workflow commands you should understand — model downloads, format conversion, abliteration, quantization — are **deliberately not wrapped**. See [`modelops/`](modelops/README.md) for the modelops tutorial.
 
 ## Quick start
 
@@ -19,21 +19,36 @@ Fresh Mac? One command:
 
 ```bash
 mkdir -p ~/repo && git clone https://github.com/<your-github-username>/mac-nix-agent.git ~/repo/mac-nix-agent
-cd ~/repo/mac-nix-agent && ./bootstrap.sh
+cd ~/repo/mac-nix-agent && ./bin/mna-bootstrap
 ```
 
-`bootstrap.sh` is idempotent — safe to re-run. It installs Nix, Homebrew, the Apple `container` runtime, applies the nix-darwin flake, seeds oMLX (host + API key), and brings up the Hermes container.
+`mna-bootstrap` is idempotent — safe to re-run. It installs Nix, Homebrew, the Apple `container` runtime, applies the nix-darwin flake, seeds oMLX (host + API key), and brings up the Hermes container.
 
-> **Note:** `bootstrap.sh` writes a gitignored `local.nix` with your `username` and `hostname` (read by `flake.nix`). The tracked `flake.nix` stays on placeholders, so upstream pulls don't conflict. `bootstrap.sh` also `git add --intent-to-add`s `local.nix` (so it shows as `A` in `git status`, never committed unless you explicitly `git commit local.nix`) — this is required because `darwin-rebuild --flake <repo>` evaluates the flake from the **git tree**, which excludes gitignored files. Without staging it, the flake would expose only the placeholder host and fail with `does not provide attribute '…darwinConfigurations.<host>.system'`. Delete `local.nix` and run `git reset local.nix` to revert to defaults.
+> **Clone it to `~/repo/mac-nix-agent`.** [home.nix](home.nix) hard-codes `~/repo/mac-nix-agent/bin` onto your PATH — deliberately, with no path-detection wrapper, so the code stays easy to read. The first run always works from anywhere (you invoke it by path: `./bin/mna-bootstrap`). But for the bare `mna-*` commands to resolve afterward, keep the repo here — or change that single PATH line in `home.nix` if you clone elsewhere.
+>
+> **After the first bootstrap, open a new terminal** (or run `exec zsh`). `mna-bootstrap` runs as a child process, so it can't add `bin/` to the PATH of the shell you launched it from — that only takes effect in shells started after the rebuild. In the same terminal, keep using `./bin/mna-*` until you open a fresh one.
+
+> **Repo commands.** Operations live in [`bin/`](bin/) as `mna-*` commands — the `mna-` prefix keeps them distinct from system tools and tab-completable as a group (`mna-<TAB>`). `home.nix` puts `bin/` on your PATH, so after the first rebuild — in any newly-opened shell — they're callable from anywhere:
+>
+> | Command | What |
+> |---------|------|
+> | `mna-bootstrap` | First-time setup (idempotent). On a fresh Mac run `./bin/mna-bootstrap` (PATH isn't wired yet). |
+> | `mna-update` | Bump flake inputs + upgrade Homebrew **verbosely** + `darwin-rebuild` + restart oMLX. |
+> | `mna-doctor [--fix]` | Diagnose the oMLX stack (stale launchd agent, port 8000 conflict, service/API health). `--fix` repairs. |
+> | `mna-omlx <cmd>` | oMLX service control: `status`/`start`/`stop`/`restart`/`logs`/`models`/`upgrade`/`key`. |
+> | `mna-hermes [cmd]` | Hermes control: bare = `chat`; also `up`/`down`/`rebuild`/`status`/`logs`. |
+> | `mna-uninstall <c>` | Factory-reset one imperative component (`omlx`/`hermes`/`container`). Data-safe by default; `--purge` removes data, `--keep-models`/`--keep-config` spare parts of it. Never edits the Nix files. |
+
+> **Note:** `mna-bootstrap` writes a gitignored `local.nix` with your `username` and `hostname` (read by `flake.nix`). The tracked `flake.nix` stays on placeholders, so upstream pulls don't conflict. `mna-bootstrap` also `git add --intent-to-add`s `local.nix` (so it shows as `A` in `git status`, never committed unless you explicitly `git commit local.nix`) — this is required because `darwin-rebuild --flake <repo>` evaluates the flake from the **git tree**, which excludes gitignored files. Without staging it, the flake would expose only the placeholder host and fail with `does not provide attribute '…darwinConfigurations.<host>.system'`. Delete `local.nix` and run `git reset local.nix` to revert to defaults.
 
 Already bootstrapped? Day-to-day commands:
 
 ```bash
 cd ~/repo/mac-nix-agent
-sudo darwin-rebuild switch --flake .   # apply config changes
-sudo nix flake update                  # bump all inputs
-hermes-up                              # start Hermes agent container
-hermes                                 # interactive chat
+mna-update                             # flake update + verbose brew upgrade + rebuild + restart oMLX
+mna-doctor                             # health-check the oMLX stack (add --fix to repair)
+mna-hermes up                          # start Hermes agent container
+mna-hermes                             # interactive chat (bare = chat)
 ```
 
 ## Table of Contents
@@ -109,7 +124,7 @@ A self-contained AI coding agent running in an [Apple Container](https://develop
 - **Self-sufficient toolbox** — Node.js, npm, pip available inside the container. Hermes can install its own packages at runtime.
 - **Host-mounted config** — `config.yaml`, `.env`, `Dockerfile`, and `entrypoint.sh` are bind-mounted, so changes apply without rebuilding the image.
 - **Sandboxed execution** — terminal backend is `local` (bash inside the VM), so Hermes can run arbitrary commands without touching the host.
-- **One-command lifecycle** — `hermes-up` / `hermes-down` / `hermes-rebuild` shell aliases manage everything.
+- **One-command lifecycle** — `mna-hermes up` / `down` / `rebuild` manage everything; bare `mna-hermes` opens a chat.
 
 ### First-time setup
 
@@ -132,16 +147,16 @@ vim .env   # set API keys for your chosen provider
 ### Start / stop
 
 ```bash
-hermes-up       # create & start the container
-hermes-down     # stop & delete the container
-hermes-rebuild  # rebuild image + restart
-hermes-logs     # tail container logs
+mna-hermes up        # create & start the container (with SearXNG built in)
+mna-hermes down      # stop the container
+mna-hermes rebuild   # rebuild image + restart
+mna-hermes logs      # tail container logs
 ```
 
 ### Use Hermes
 
 ```bash
-hermes          # interactive chat (exec into container)
+mna-hermes           # interactive chat (bare = chat; same as `mna-hermes chat`)
 ```
 
 ### Directory layout
@@ -181,11 +196,29 @@ oMLX is installed via Homebrew (`jundot/omlx/omlx`) and run by brew's stock laun
 - `.server.host = "0.0.0.0"` — so the Apple Container VM can reach it at `192.168.64.1:8000`
 - `.auth.api_key = "omlx-sk-…"` — required for Bearer auth (also editable from the admin UI → API Keys)
 
-`bootstrap.sh` seeds both on first run and writes the same key into `hermes/.env` as `OMLX_API_KEY`.
+`mna-bootstrap` seeds both on first run and writes the same key into `hermes/.env` as `OMLX_API_KEY`.
+
+#### Untrusted tap
+
+Homebrew 5.x refuses to load formulae from third-party taps until you explicitly **trust** them. Because nix-darwin runs `brew bundle` non-interactively during activation, an untrusted `jundot/omlx` tap aborts `darwin-rebuild` with:
+
+```
+Error: Refusing to load formula jundot/omlx/omlx from untrusted tap jundot/omlx.
+```
+
+`mna-bootstrap` taps and trusts it automatically (before the `darwin-rebuild` step). If you hit this on an existing machine, trust it once and re-run:
+
+```bash
+eval "$(/opt/homebrew/bin/brew shellenv)"   # if `brew` isn't on PATH yet
+brew trust jundot/omlx
+sudo darwin-rebuild switch --flake .
+```
+
+> nix-darwin's `homebrew` module has no declarative `trust` option yet, so this lives in `mna-bootstrap` rather than `darwin.nix`. A future nix-darwin release exposing Homebrew's `trusted: true` Brewfile attribute would let us drop the manual step.
 
 ### Download your first model
 
-`bootstrap.sh` leaves oMLX running but **with no model loaded** — the repo doesn't ship weights. Pull one from the admin UI:
+`mna-bootstrap` leaves oMLX running but **with no model loaded** — the repo doesn't ship weights. Pull one from the admin UI:
 
 1. Open <http://127.0.0.1:8000/admin> and log in with the key from `~/.omlx/settings.json` (`jq -r .auth.api_key ~/.omlx/settings.json`).
 2. Go to **Models → Download** and paste a Hugging Face repo ID. Pick a Gemma 4 MLX `mxfp8` build that fits your Mac's unified memory — leave at least ~8 GB headroom for the OS, KV cache at 32k, and any other apps:
@@ -215,14 +248,14 @@ oMLX is installed via Homebrew (`jundot/omlx/omlx`) and run by brew's stock laun
    curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:8000/v1/models | jq '.data[].id'
    ```
 
-5. If the returned ID doesn't match `model.default` in [`hermes/config.yaml`](hermes/config.yaml), update it, then `hermes-rebuild`.
+5. If the returned ID doesn't match `model.default` in [`hermes/config.yaml`](hermes/config.yaml), update it, then `mna-hermes rebuild`.
 6. Optionally tweak that model's `max_context_window` — see [oMLX — context window](#omlx--context-window) below. Smaller-RAM Macs should also lower `model.context_length` to match.
 
-Once a model is loaded and `hermes/config.yaml` points at it, `hermes` chats work end-to-end.
+Once a model is loaded and `hermes/config.yaml` points at it, `mna-hermes` chats work end-to-end.
 
 ### oMLX — context window
 
-`hermes/config.yaml`'s `model.context_length` (32768) caps what Hermes sends to oMLX. On the oMLX side, the effective ceiling is the **per-model** `max_context_window` in `~/.omlx/model_settings.json`, falling back to the **global** `.sampling.max_context_window` in `~/.omlx/settings.json`. `bootstrap.sh` pins the global fallback to 32768 so any freshly downloaded model works out of the box at 32k.
+`hermes/config.yaml`'s `model.context_length` (32768) caps what Hermes sends to oMLX. On the oMLX side, the effective ceiling is the **per-model** `max_context_window` in `~/.omlx/model_settings.json`, falling back to the **global** `.sampling.max_context_window` in `~/.omlx/settings.json`. `mna-bootstrap` pins the global fallback to 32768 so any freshly downloaded model works out of the box at 32k.
 
 Per-model overrides are **your call** — there's no `omlx` CLI for this, and the repo deliberately doesn't pre-pin settings for models it doesn't ship. To override:
 
@@ -257,7 +290,7 @@ NEW="omlx-sk-$(openssl rand -hex 24)"
 jq --arg k "$NEW" '.auth.api_key = $k' ~/.omlx/settings.json > /tmp/s && mv /tmp/s ~/.omlx/settings.json
 brew services restart jundot/omlx/omlx
 sed -i.bak "s|^OMLX_API_KEY=.*|OMLX_API_KEY=$NEW|" ~/repo/mac-nix-agent/hermes/.env && rm ~/repo/mac-nix-agent/hermes/.env.bak
-hermes-down && hermes-up
+mna-hermes down && mna-hermes up
 ```
 
 Service control:
@@ -302,14 +335,14 @@ Models, outputs, custom nodes: `~/Library/Application Support/comfy-ui/`
 
 ## First-time setup
 
-**TL;DR:** `./bootstrap.sh` does everything. Read on if you want to know what it does, or to do steps manually.
+**TL;DR:** `./bin/mna-bootstrap` does everything. Read on if you want to know what it does, or to do steps manually.
 
 ### Automated
 
 ```bash
 mkdir -p ~/repo && git clone https://github.com/<your-github-username>/mac-nix-agent.git ~/repo/mac-nix-agent
 cd ~/repo/mac-nix-agent
-./bootstrap.sh
+./bin/mna-bootstrap
 ```
 
 The script is idempotent. Each step is skipped if already satisfied:
@@ -319,11 +352,12 @@ The script is idempotent. Each step is skipped if already satisfied:
 3. Prompt for git `user.name` / `user.email` if `~/.gitconfig` doesn't have them yet
 4. Install Determinate Nix
 5. Install Homebrew
-6. `sudo darwin-rebuild switch --flake .`
-7. Install or upgrade Apple `container` runtime (latest release from GitHub)
-8. Seed `~/.omlx/settings.json` with `host=0.0.0.0`, generated API key, and `sampling.max_context_window=32768`
-9. Create `hermes/.env` from `.env.example` and sync `OMLX_API_KEY`
-10. `hermes/run.sh rebuild`
+6. Tap and trust `jundot/omlx` (so `brew bundle` can load the oMLX formula)
+7. `sudo darwin-rebuild switch --flake .`
+8. Install or upgrade Apple `container` runtime (latest release from GitHub)
+9. Seed `~/.omlx/settings.json` with `host=0.0.0.0`, generated API key, and `sampling.max_context_window=32768`
+10. Create `hermes/.env` from `.env.example` and sync `OMLX_API_KEY`
+11. `hermes/run.sh rebuild`
 
 ### Manual (if you prefer step-by-step)
 
@@ -343,9 +377,9 @@ git clone https://github.com/<your-github-username>/mac-nix-agent.git ~/repo/mac
 cd ~/repo/mac-nix-agent
 ```
 
-#### 3. Write `local.nix` (auto-done by bootstrap.sh)
+#### 3. Write `local.nix` (auto-done by mna-bootstrap)
 
-`flake.nix` reads per-machine identity from a gitignored `./local.nix`. `bootstrap.sh` generates it from `id -un` and `scutil --get LocalHostName`. To do it manually, create `local.nix` at the repo root:
+`flake.nix` reads per-machine identity from a gitignored `./local.nix`. `mna-bootstrap` generates it from `id -un` and `scutil --get LocalHostName`. To do it manually, create `local.nix` at the repo root:
 
 ```nix
 {
@@ -367,6 +401,14 @@ nix-darwin manages Homebrew declaratively but does not install it — do that on
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Then trust the third-party oMLX tap, or the `brew bundle` run inside `darwin-rebuild` (next step) will abort with `Refusing to load formula … from untrusted tap`:
+
+```bash
+eval "$(/opt/homebrew/bin/brew shellenv)"   # if `brew` isn't on PATH yet
+brew tap jundot/omlx https://github.com/jundot/omlx
+brew trust jundot/omlx
 ```
 
 #### 5. Build and activate
@@ -427,6 +469,40 @@ To uninstall (keep user data with `-k`, remove with `-d`):
 /usr/local/bin/uninstall-container.sh -k
 ```
 
+> Or, from the repo: `mna-uninstall container` (wraps the script above with `-k`; `--purge` passes `-d`).
+
+---
+
+## Starting over (uninstall / reinstall a component)
+
+`mna-uninstall <component>` factory-resets one **imperative** piece of the stack without touching the Nix files — so the declarative layer stays idempotent and re-running `mna-bootstrap` (or `darwin-rebuild`) cleanly reinstalls. Use it to "start over" on a single component:
+
+```bash
+mna-uninstall omlx        # remove oMLX, keep ~/.omlx (models + settings) intact
+mna-bootstrap             # Nix reinstalls the formula; step 8 reseeds settings.json
+```
+
+| Component | Default (data-safe) | `--purge` adds | Reinstall |
+|-----------|---------------------|----------------|-----------|
+| `omlx` | stop + `brew uninstall`; keep `~/.omlx/` | `rm -rf ~/.omlx` | `mna-bootstrap` |
+| `hermes` | stop + delete container + remove image; keep `hermes-data` volume & host files | delete `hermes-data` volume | `mna-hermes rebuild` |
+| `container` | `uninstall-container.sh -k` (keep data) | `… -d` (delete data) | `mna-bootstrap` |
+
+**Sparing data on `--purge` (oMLX only):**
+
+```bash
+mna-uninstall omlx --purge                          # wipe ~/.omlx entirely
+mna-uninstall omlx --purge --keep-models            # spare ~/.omlx/models/ (the weights)
+mna-uninstall omlx --purge --keep-config            # spare settings.json + model_settings.json
+mna-uninstall omlx --purge --keep-models --keep-config   # spare both
+```
+
+Other flags: `--yes` (skip the confirmation prompt), `--dry-run` (print what would happen, change nothing).
+
+> **Hermes host files are never deleted** — `hermes/.env`, `hermes/data/memories/`, and `hermes/workspace/` survive every `mna-uninstall hermes`, even with `--purge` (only the container's named volume is removed). Those are your backed-up state (see [Backup & restore](#backup--restore)).
+>
+> **Nix-managed things** (CLI packages, casks, fonts) are not handled by `mna-uninstall` — remove those by editing `home.nix` / `darwin.nix` and running `mna-update`.
+
 ---
 
 ## Day-to-day usage
@@ -460,6 +536,12 @@ sudo darwin-rebuild switch --flake ~/repo/mac-nix-agent
 
 ```bash
 cd ~/repo/mac-nix-agent
+mna-update                 # flake update + verbose brew upgrade + darwin-rebuild + restart oMLX
+```
+
+`mna-update` runs `brew upgrade` with `--verbose` **before** `darwin-rebuild`, so the long, silent Homebrew step inside activation (which can look like a hang on a big bottle such as oMLX) has nothing left to do quietly. To do it by hand instead:
+
+```bash
 sudo nix flake update
 sudo darwin-rebuild switch --flake .
 ```
@@ -479,7 +561,22 @@ GIT_CONFIG_GLOBAL=~/.gitconfig git config --global user.name  "Your Name"
 GIT_CONFIG_GLOBAL=~/.gitconfig git config --global user.email "you@example.com"
 ```
 
-`bootstrap.sh` does this automatically. We deliberately don't put identity into `home.nix` itself, so personal info doesn't leak back into the public flake.
+`mna-bootstrap` does this automatically. We deliberately don't put identity into `home.nix` itself, so personal info doesn't leak back into the public flake.
+
+---
+
+### oMLX won't start / `darwin-rebuild` seems to hang
+
+Two distinct symptoms, both handled by the repo commands:
+
+- **`darwin-rebuild` looks frozen with no output.** It isn't — `homebrew.onActivation.upgrade = true` runs `brew upgrade` silently during activation, and a big bottle (oMLX is a ~1.6 GB / 35k-file Python venv) can take several minutes with zero progress. Use `mna-update` instead; it upgrades Homebrew **verbosely first** so you see progress.
+- **oMLX service stuck in `error`, log shows `[Errno 48] Address already in use`.** Usually a stale `org.nixos.omlx` launchd agent (from an older `darwin.nix` that ran oMLX as a Nix service) is squatting port 8000 with `KeepAlive`, so the Homebrew service can never bind. Diagnose and repair:
+
+  ```bash
+  mna-doctor          # report what's wrong
+  mna-doctor --fix    # boot out the stale agent, kill orphans, restart the service
+  mna-omlx status     # confirm: version, service started, port bound, HTTP 200
+  ```
 
 ---
 
@@ -507,10 +604,10 @@ mkdir -p ~/repo
 git clone https://github.com/<your-github-username>/mac-nix-agent.git ~/repo/mac-nix-agent
 cd ~/repo/mac-nix-agent
 tar xzf ~/hermes-backup-YYYYMMDD.tgz   # restores hermes/.env + data + workspace
-./bootstrap.sh
+./bin/mna-bootstrap
 ```
 
-`bootstrap.sh` will overwrite `OMLX_API_KEY` in the restored `.env` with the new machine's oMLX key (the old one is dead anyway), but your `hermes/data/memories/*` and `hermes/workspace/` files come through verbatim — they're in the tarball, not the public repo.
+`mna-bootstrap` will overwrite `OMLX_API_KEY` in the restored `.env` with the new machine's oMLX key (the old one is dead anyway), but your `hermes/data/memories/*` and `hermes/workspace/` files come through verbatim — they're in the tarball, not the public repo.
 
 If you only care about the agent's "identity" (memories) and don't mind reconfiguring everything else, the minimum backup is just `hermes/data/memories/`.
 

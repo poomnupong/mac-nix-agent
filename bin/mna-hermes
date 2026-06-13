@@ -1,0 +1,35 @@
+#!/bin/bash
+# mac-nix-agent — Hermes agent control
+#
+# Wraps hermes/run.sh and the chat/exec invocation behind one memorable
+# command, mirroring `mna-omlx`. With NO argument it opens a chat (the
+# most common interactive action).
+#
+# Usage: mna-hermes [command]
+#   chat       interactive chat (default — exec into the container)
+#   up         create & start the container (with SearXNG built in)
+#   down       stop the container
+#   rebuild    rebuild the toolbox image + restart
+#   status     show container status
+#   logs       tail -f container logs
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+RUN="$REPO_DIR/hermes/run.sh"
+
+cmd_chat() {
+    exec container exec -it hermes-agent bash -c \
+        'source /opt/hermes/.venv/bin/activate && hermes'
+}
+
+case "${1:-chat}" in
+    chat)    cmd_chat ;;
+    up)      "$RUN" up ;;
+    down)    "$RUN" down ;;
+    rebuild) "$RUN" rebuild ;;
+    status)  "$RUN" status ;;
+    logs)    exec container logs -f hermes-agent ;;
+    -h|--help) sed -n '2,15p' "$0" ;;
+    *) echo "Usage: mna-hermes {chat|up|down|rebuild|status|logs}" >&2; exit 1 ;;
+esac

@@ -47,14 +47,15 @@
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
     initContent = ''
-      export PATH="$HOME/.local/bin:$PATH"
+      # Repo operations live in <repo>/bin as `mna-*` commands (mna-bootstrap,
+      # mna-update, mna-doctor, mna-omlx). Put them on PATH so they're callable
+      # from anywhere and tab-complete as a group (`mna-<TAB>`).
+      export PATH="$HOME/repo/mac-nix-agent/bin:$HOME/.local/bin:$PATH"
     '';
     shellAliases = {
-      hermes = "container exec -it hermes-agent bash -c 'source /opt/hermes/.venv/bin/activate && hermes'";
-      hermes-up = "~/repo/mac-nix-agent/hermes/run.sh up";
-      hermes-down = "~/repo/mac-nix-agent/hermes/run.sh down";
-      hermes-logs = "container logs -f hermes-agent";
-      hermes-rebuild = "~/repo/mac-nix-agent/hermes/run.sh rebuild";
+      # Hermes & oMLX lifecycle live in <repo>/bin as `mna-*` commands
+      # (mna-hermes chat/up/down/rebuild/logs, mna-omlx, mna-doctor, …).
+      # Bare `mna-hermes` opens a chat. Kept here only as a cd bookmark:
 
       # Modelops: cd bookmark only. Workflow commands are intentionally NOT aliased
       # — see modelops/README.md and run them yourself to learn the toolchain.

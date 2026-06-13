@@ -9,17 +9,20 @@
 #   3. Prompt for git identity            (skip if ~/.gitconfig has user.email)
 #   4. Install Determinate Nix              (skip if `nix` present)
 #   5. Install Homebrew                     (skip if `brew` present)
+#   5b. Trust the jundot/omlx tap           (required for brew bundle)
 #   6. Apply nix-darwin flake               (always — picks up local changes)
 #   7. Install/upgrade Apple `container`    (latest release from GitHub)
 #   8. Configure oMLX (bind + key + 32k global ctx) (skip if already)
 #   9. Seed hermes/.env from .env.example   (skip if .env exists)
-#  10. Start Hermes container               (via hermes-rebuild)
+#  10. Start Hermes container               (via mna-hermes rebuild)
 #
-# Usage: ./bootstrap.sh
+# Usage: ./bin/mna-bootstrap   (on a fresh Mac, before bin/ is on PATH)
+#        mna-bootstrap         (afterwards — bin/ is added to PATH by home.nix)
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Script lives in <repo>/bin/, so the repo root is one level up.
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_DIR"
 
 # ── Pretty logging ───────────────────────────────────────
@@ -38,6 +41,17 @@ fi
 
 if [ "${SUDO_USER:-}" ] && [ "$EUID" -eq 0 ]; then
     die "Do NOT run this script with sudo. It prompts for sudo only when needed."
+fi
+
+# home.nix hard-codes ~/repo/mac-nix-agent/bin onto PATH (kept deliberately
+# simple — no path-detection wrapper). If the repo lives elsewhere everything
+# still works, but the bare `mna-*` commands won't resolve; you'd call them as
+# ./bin/mna-* or edit that one PATH line in home.nix. Just a heads-up, not fatal.
+expected_dir="$HOME/repo/mac-nix-agent"
+if [ "$REPO_DIR" != "$expected_dir" ]; then
+    warn "Repo is at $REPO_DIR, not $expected_dir."
+    warn "home.nix only adds ~/repo/mac-nix-agent/bin to PATH — move the repo there"
+    warn "(or edit that line in home.nix) for bare 'mna-*' commands to work."
 fi
 
 # ── 2. Personalize flake.nix (username + hostname) ───────
@@ -126,9 +140,37 @@ fi
 if ! command -v brew >/dev/null 2>&1; then
     log "Installing Homebrew..."
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    eval "$(/opt/homebrew/bin/brew shellenv)"
 else
     log "Homebrew present — skipping."
+fi
+
+# Load brew onto PATH regardless of whether it was just installed or
+# already present. Homebrew shell integration isn't in the (home-manager
+# managed) interactive rc, so `brew` may not be on PATH even when it's
+# installed at the standard prefix — without this, step 5b's trust would
+# silently no-op and darwin-rebuild would later hit the untrusted-tap error.
+if ! command -v brew >/dev/null 2>&1; then
+    for brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        [ -x "$brew_bin" ] && eval "$("$brew_bin" shellenv)" && break
+    done
+fi
+
+# ── 5b. Trust the third-party oMLX tap ───────────────────
+# Homebrew >= 5.x refuses to load formulae from untrusted taps when run
+# non-interactively (as nix-darwin's `brew bundle` does during step 6's
+# activation):
+#   Error: Refusing to load formula jundot/omlx/omlx from untrusted tap.
+# Trust must be established BEFORE darwin-rebuild runs brew bundle.
+# nix-darwin's homebrew module has no declarative `trust` option yet, so
+# we tap + trust here. `brew tap` first guarantees the tap exists before
+# `brew trust` references it (on a fresh box it isn't cloned until brew
+# bundle runs); both are idempotent and `|| true` keeps re-runs clean.
+if command -v brew >/dev/null 2>&1; then
+    log "Trusting jundot/omlx Homebrew tap..."
+    brew tap jundot/omlx https://github.com/jundot/omlx >/dev/null 2>&1 || true
+    brew trust jundot/omlx >/dev/null 2>&1 || true
+else
+    warn "brew not found on PATH — skipping tap trust. If darwin-rebuild fails with 'untrusted tap', run: brew trust jundot/omlx"
 fi
 
 # ── 6. nix-darwin flake activation ───────────────────────
@@ -297,11 +339,15 @@ cat <<EOF
 
 $(printf "\033[1;32mBootstrap complete.\033[0m")
 
+  Next shell:  open a new terminal (or run 'exec zsh') so ~/repo/mac-nix-agent/bin
+               lands on PATH and the bare 'mna-*' commands resolve. Until then,
+               keep calling them as ./bin/mna-* from the repo root.
+
   oMLX admin:  http://127.0.0.1:8000/admin
   Hermes dash: http://localhost:9119
   Attach:      container exec -it hermes-agent bash
-  Chat:        hermes
+  Chat:        mna-hermes
 
 Next: pull a model from the oMLX admin UI (or place one under ~/.omlx/models/),
-then edit hermes/config.yaml \`model.default\` and run \`hermes-rebuild\`.
+then edit hermes/config.yaml \`model.default\` and run \`mna-hermes rebuild\`.
 EOF

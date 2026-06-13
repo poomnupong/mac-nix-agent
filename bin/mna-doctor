@@ -1,0 +1,166 @@
+#!/bin/bash
+# mac-nix-agent — health check & repair for the oMLX inference stack
+#
+# Diagnoses the failure modes seen in practice:
+#   * a stale `org.nixos.omlx` launchd agent (from an older darwin.nix that
+#     ran oMLX as a Nix service) squatting port 8000 with KeepAlive, which
+#     keeps the current Homebrew service stuck in `error` with
+#     "[Errno 48] Address already in use"
+#   * orphaned `omlx-server` processes holding :8000 outside launchd
+#   * the Homebrew service not running
+#   * the API not answering on localhost
+#   * an oMLX upgrade pending (0.x.y < latest)
+#
+# Default run only REPORTS. Pass --fix to remediate (bootout the stale Nix
+# agent, kill orphans, restart the Homebrew service).
+#
+# Usage: mna-doctor [--fix]
+
+set -uo pipefail   # not -e: we want every check to run and tally findings
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+FIX=0
+case "${1:-}" in
+    --fix) FIX=1 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    "" ) ;;
+    *) printf "Unknown option: %s (try --help)\n" "$1" >&2; exit 2 ;;
+esac
+
+# ── Output helpers ───────────────────────────────────────
+PORT=8000
+SERVICE="jundot/omlx/omlx"
+NIX_LABEL="org.nixos.omlx"
+NIX_PLIST="$HOME/Library/LaunchAgents/${NIX_LABEL}.plist"
+LOG="/opt/homebrew/var/log/omlx.log"
+issues=0
+
+ok()   { printf "\033[1;32m  ok\033[0m   %s\n" "$*"; }
+bad()  { printf "\033[1;31m fail\033[0m  %s\n" "$*"; issues=$((issues + 1)); }
+info() { printf "\033[1;34m info\033[0m  %s\n" "$*"; }
+fixmsg() { printf "\033[1;35m  fix\033[0m  %s\n" "$*"; }
+
+# ── Load Homebrew onto PATH ──────────────────────────────
+if ! command -v brew >/dev/null 2>&1; then
+    for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        [ -x "$b" ] && eval "$("$b" shellenv)" && break
+    done
+fi
+
+printf "\033[1mmac-nix-agent doctor\033[0m  (mode: %s)\n\n" \
+    "$( [ "$FIX" -eq 1 ] && echo 'REPAIR' || echo 'report-only' )"
+
+# ── 1. brew reachable ────────────────────────────────────
+if command -v brew >/dev/null 2>&1; then
+    ok "Homebrew on PATH ($(command -v brew))"
+else
+    bad "Homebrew not found at /opt/homebrew or /usr/local — install it first."
+    printf "\nFound %d issue(s). Cannot continue without brew.\n" "$issues"
+    exit 1
+fi
+
+# ── 2. oMLX installed ────────────────────────────────────
+if ver="$(brew list --versions "$SERVICE" 2>/dev/null)"; then
+    ok "oMLX installed: $ver"
+else
+    bad "oMLX formula not installed — run mna-bootstrap (or: brew install $SERVICE)."
+fi
+
+# ── 3. Stale Nix launchd agent (the classic port-8000 squatter) ──
+nix_loaded=0
+launchctl list 2>/dev/null | grep -q "$NIX_LABEL" && nix_loaded=1
+if [ "$nix_loaded" -eq 1 ] || [ -f "$NIX_PLIST" ]; then
+    bad "Stale '$NIX_LABEL' launchd agent present — it squats :$PORT and blocks the Homebrew service."
+    if [ "$FIX" -eq 1 ]; then
+        [ "$nix_loaded" -eq 1 ] && launchctl bootout "gui/$(id -u)/$NIX_LABEL" 2>/dev/null \
+            && fixmsg "booted out $NIX_LABEL"
+        if [ -f "$NIX_PLIST" ]; then
+            rm -f "$NIX_PLIST" && fixmsg "removed $NIX_PLIST"
+        fi
+    else
+        info "  → fix: launchctl bootout gui/\$(id -u)/$NIX_LABEL ; rm -f $NIX_PLIST"
+    fi
+else
+    ok "No stale '$NIX_LABEL' agent."
+fi
+
+# ── 4. Who holds port 8000 ───────────────────────────────
+holder_pid="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -n1)"
+if [ -n "$holder_pid" ]; then
+    holder_cmd="$(ps -p "$holder_pid" -o comm= 2>/dev/null)"
+    # Is the listener supervised by the Homebrew launchd job?
+    if launchctl list 2>/dev/null | grep -E '[[:space:]]homebrew\.mxcl\.omlx$' | grep -qv '^-'; then
+        ok "Port $PORT held by Homebrew-supervised oMLX (pid $holder_pid)."
+    elif [ "$nix_loaded" -eq 1 ]; then
+        bad "Port $PORT held by stale Nix agent (pid $holder_pid, $holder_cmd)."
+        if [ "$FIX" -eq 1 ]; then
+            kill "$holder_pid" 2>/dev/null; pkill -f omlx-server 2>/dev/null
+            sleep 2; fixmsg "killed orphaned oMLX process(es) on :$PORT"
+        fi
+    else
+        info "Port $PORT held by pid $holder_pid ($holder_cmd) — not the Homebrew job."
+        if [ "$FIX" -eq 1 ]; then
+            pkill -f omlx-server 2>/dev/null; sleep 2
+            fixmsg "killed stray omlx-server process(es)"
+        fi
+    fi
+else
+    info "Nothing listening on :$PORT yet."
+fi
+
+# ── 5. Homebrew service state ────────────────────────────
+svc_line="$(brew services list 2>/dev/null | awk '$1=="omlx"{print; exit}')"
+svc_state="$(printf '%s' "$svc_line" | awk '{print $2}')"
+case "$svc_state" in
+    started) ok "Homebrew service 'omlx' started." ;;
+    error)
+        bad "Homebrew service 'omlx' in error state (likely the port conflict above)."
+        if [ "$FIX" -eq 1 ]; then
+            pkill -f omlx-server 2>/dev/null; sleep 2
+            brew services restart "$SERVICE" >/dev/null 2>&1 \
+                && fixmsg "restarted oMLX service" || warn "restart failed"
+            sleep 4
+        fi
+        ;;
+    "" ) bad "Homebrew service 'omlx' not loaded." ;;
+    *) info "Homebrew service 'omlx' state: $svc_state" ;;
+esac
+
+# ── 6. API health ────────────────────────────────────────
+settings="$HOME/.omlx/settings.json"
+if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
+    key="$(jq -r '.auth.api_key // empty' "$settings")"
+    code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' \
+        -H "Authorization: Bearer $key" "http://127.0.0.1:$PORT/v1/models" 2>/dev/null)"
+    if [ "$code" = "200" ]; then
+        n="$(curl -s -m 5 -H "Authorization: Bearer $key" \
+            "http://127.0.0.1:$PORT/v1/models" 2>/dev/null | jq '.data | length' 2>/dev/null)"
+        ok "API http://127.0.0.1:$PORT → HTTP 200 (${n:-?} model(s) available)."
+    else
+        bad "API http://127.0.0.1:$PORT → HTTP ${code:-000} (server not answering)."
+        [ -f "$LOG" ] && info "  last log: $(tail -n1 "$LOG" 2>/dev/null)"
+    fi
+else
+    info "No ~/.omlx/settings.json yet — run mna-bootstrap to seed it."
+fi
+
+# ── 7. Pending upgrade ───────────────────────────────────
+if brew outdated --quiet 2>/dev/null | grep -q '^omlx$\|/omlx$'; then
+    info "An oMLX upgrade is available — run 'mna-omlx upgrade' (or 'mna-update')."
+else
+    [ -n "${ver:-}" ] && ok "oMLX is up to date."
+fi
+
+# ── Summary ──────────────────────────────────────────────
+echo
+if [ "$issues" -eq 0 ]; then
+    printf "\033[1;32mAll checks passed.\033[0m\n"
+    exit 0
+elif [ "$FIX" -eq 1 ]; then
+    printf "\033[1;33mAttempted repairs for %d issue(s).\033[0m Re-run 'mna-doctor' to confirm.\n" "$issues"
+    exit 0
+else
+    printf "\033[1;31mFound %d issue(s).\033[0m Re-run with '--fix' to repair automatically.\n" "$issues"
+    exit 1
+fi
