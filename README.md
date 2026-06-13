@@ -13,6 +13,8 @@ The goal: clone the repo, run `./bin/mna-bootstrap`, and have a working `mna-her
 
 > **Philosophy.** This repo is meant to **accelerate your learning** of the Apple-silicon AI toolchain, not hide it from you. Lifecycle plumbing (`mna-hermes up`, `darwin-rebuild switch`) is wrapped because it's plumbing. Workflow commands you should understand — model downloads, format conversion, abliteration, quantization — are **deliberately not wrapped**. See [`modelops/`](modelops/README.md) for the modelops tutorial.
 
+> **⚠️ Read first — what this is, and what it isn't.** This repo runs Hermes — an autonomous, web-connected, self-modifying agent — **inside an Apple `container` microVM on purpose**. The sandbox *is* the product: the agent gets a few explicit bind mounts and **cannot** see your real `~`, your SSH/cloud keys, your OneDrive/iCloud, or your authenticated browser — so you can let it off the leash and reset it with `mna-hermes rebuild`. The trade-off: it can't touch your real projects or drive your desktop. If you instead want an assistant that operates your actual machine and corporate apps, that's **host-native Hermes** — a deliberately different, higher-trust tool, not this repo. The new **Hermes Desktop app is just a GUI front-end and changes neither posture** (attach it to the container and the jail stays intact). Before adopting — especially the limits (open network egress, `.env` is readable by the agent, young VM runtime) and the "don't drift into host-native by accident" discipline — read **[docs/security-model.md](docs/security-model.md)**.
+
 ## Quick start
 
 Fresh Mac? One command:
@@ -36,7 +38,7 @@ cd ~/repo/mac-nix-agent && ./bin/mna-bootstrap
 > | `mna-update` | Bump flake inputs + upgrade Homebrew **verbosely** + `darwin-rebuild` + restart oMLX. |
 > | `mna-doctor [--fix]` | Diagnose the oMLX stack (stale launchd agent, port 8000 conflict, service/API health). `--fix` repairs. |
 > | `mna-omlx <cmd>` | oMLX service control: `status`/`start`/`stop`/`restart`/`logs`/`models`/`upgrade`/`key`. |
-> | `mna-hermes [cmd]` | Hermes control: bare = `chat`; also `up`/`down`/`rebuild`/`status`/`logs`. |
+> | `mna-hermes [cmd]` | Hermes control: bare = `chat`; also `up`/`down`/`rebuild`/`status`/`dashboard`/`logs`. |
 > | `mna-uninstall <c>` | Factory-reset one imperative component (`omlx`/`hermes`/`container`). Data-safe by default; `--purge` removes data, `--keep-models`/`--keep-config` spare parts of it. Never edits the Nix files. |
 
 > **Note:** `mna-bootstrap` writes a gitignored `local.nix` with your `username` and `hostname` (read by `flake.nix`). The tracked `flake.nix` stays on placeholders, so upstream pulls don't conflict. `mna-bootstrap` also `git add --intent-to-add`s `local.nix` (so it shows as `A` in `git status`, never committed unless you explicitly `git commit local.nix`) — this is required because `darwin-rebuild --flake <repo>` evaluates the flake from the **git tree**, which excludes gitignored files. Without staging it, the flake would expose only the placeholder host and fail with `does not provide attribute '…darwinConfigurations.<host>.system'`. Delete `local.nix` and run `git reset local.nix` to revert to defaults.
@@ -53,12 +55,14 @@ mna-hermes                             # interactive chat (bare = chat)
 
 ## Table of Contents
 
+- [Read first — what this is, and what it isn't](docs/security-model.md)
 - [Quick start](#quick-start)
 - [What this manages](#what-this-manages)
 - [Hermes Agent (containerized)](#hermes-agent-containerized)
   - [Architecture](#architecture)
   - [Features](#features)
   - [LLM providers](#llm-providers)
+  - [Browser GUI (built-in dashboard)](#browser-gui-built-in-dashboard)
   - [Directory layout](#directory-layout)
 - [Local services](#local-services)
 - [First-time setup](#first-time-setup)
@@ -147,10 +151,11 @@ vim .env   # set API keys for your chosen provider
 ### Start / stop
 
 ```bash
-mna-hermes up        # create & start the container (with SearXNG built in)
-mna-hermes down      # stop the container
-mna-hermes rebuild   # rebuild image + restart
-mna-hermes logs      # tail container logs
+mna-hermes up         # create & start the container (with SearXNG built in)
+mna-hermes down       # stop the container
+mna-hermes rebuild    # rebuild image + restart
+mna-hermes dashboard  # open the browser GUI (http://localhost:9119)
+mna-hermes logs       # tail container logs
 ```
 
 ### Use Hermes
@@ -159,15 +164,36 @@ mna-hermes logs      # tail container logs
 mna-hermes           # interactive chat (bare = chat; same as `mna-hermes chat`)
 ```
 
+### Browser GUI (built-in dashboard)
+
+Prefer a visual interface to the terminal? The container also runs Hermes' **web dashboard** — open it with:
+
+```bash
+mna-hermes dashboard            # ensures the container is up, then opens the browser
+```
+
+It serves the **same containerized agent** as `mna-hermes` chat ([docs](https://hermes-agent.nousresearch.com/docs/user-guide/features/web-dashboard)), so sessions, memory, and skills are shared. Over the terminal it adds:
+
+- **Embedded chat tab** — the full Hermes TUI in the browser (slash commands, model picker, tool-call cards, streaming).
+- **Form editors** for `config.yaml` (150+ fields) and `.env` API keys — no hand-editing YAML.
+- **Sessions browser** with full-text search and export; **Skills**, **MCP**, **Analytics**, **Cron**, and **Logs** panes.
+
+It runs **entirely inside the microVM** (published only to `127.0.0.1:9119`) and **installs nothing on your Mac** — the agent stays jailed; your browser just talks to the loopback port. Binding inside the VM engages Hermes' auth gate, so `mna-bootstrap` seeds a readable username/password into `hermes/.env`:
+
+- `mna-hermes dashboard` prints the current login each time.
+- **Change it:** edit `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD` in `hermes/.env`, then `mna-hermes rebuild`. Keep `HERMES_DASHBOARD_BASIC_AUTH_SECRET` stable so logins survive restarts.
+
+> **Native Hermes Desktop app?** This repo deliberately **doesn't install it** — the native app lays down a host-side `~/.hermes` agent runtime, which is exactly the host-native footprint the container model avoids ([why](docs/security-model.md#hermes-desktop-app-released-2026--does-it-change-any-of-this)). The built-in browser dashboard above already covers the GUI use case with zero host install. If you still want the native app, install it yourself ([Hermes Desktop](https://hermes-agent.nousresearch.com/desktop)) and point it at **this container's backend** instead of its own: **Settings → Gateway → Remote gateway**, Remote URL `http://127.0.0.1:9119`, then sign in with the username/password from `hermes/.env`. That keeps the agent jailed in the VM and the desktop app a pure front-end.
+
 ### Directory layout
 
 ```
 hermes/
 ├── config.yaml          # Hermes CLI config (model, tools, memory)
-├── .env                 # API keys and service URLs (gitignored)
+├── .env                 # API keys, dashboard login, service URLs (gitignored)
 ├── .env.example         # Template for .env
 ├── Dockerfile           # Builds hermes-toolbox image
-├── entrypoint.sh        # Starts SearXNG + Camofox, then idles
+├── entrypoint.sh        # Starts SearXNG + Camofox + dashboard, then idles
 ├── run.sh               # Lifecycle script (up/down/rebuild/status)
 ├── searxng/
 │   └── settings.yml     # SearXNG config
@@ -232,9 +258,9 @@ sudo darwin-rebuild switch --flake .
 
    **Picking by Mac RAM** (assumes the model is the only large workload — close LM Studio, ComfyUI, large IDE projects, etc.):
 
-   - **8 GB:** `gemma-4-e2b-it-mxfp8` only. Drop `context_length` to 8192–16384 in `hermes/config.yaml` and the matching `max_context_window` in oMLX (see below) if you hit OOM.
+   - **8 GB:** `gemma-4-e2b-it-mxfp8` only, and this model is impractical here — Hermes Agent refuses to start below a 64K context window, whose KV cache won't fit in 8 GB. Treat 16 GB as the realistic floor.
    - **16 GB:** `gemma-4-e4b-it-mxfp8` is the sweet spot; `e2b` for snappier responses.
-   - **24–32 GB:** `gemma-4-e4b-it-mxfp8` reliably; `gemma-4-26b-a4b-it-mxfp8` works but expect swapping under long contexts — keep the window at 32k or lower and close other heavy apps.
+   - **24–32 GB:** `gemma-4-e4b-it-mxfp8` reliably; `gemma-4-26b-a4b-it-mxfp8` works but expect swapping under long contexts — keep the window at the 64k floor and close other heavy apps.
    - **36–48 GB:** `gemma-4-26b-a4b-it-mxfp8` is the default pick. MoE keeps active compute small while quality stays near 31B-dense.
    - **64 GB+:** Any of them. `gemma-4-31b-it-mxfp8` for strongest single-pass quality; `gemma-4-26b-a4b-it-mxfp8` for faster throughput.
 
@@ -255,7 +281,9 @@ Once a model is loaded and `hermes/config.yaml` points at it, `mna-hermes` chats
 
 ### oMLX — context window
 
-`hermes/config.yaml`'s `model.context_length` (32768) caps what Hermes sends to oMLX. On the oMLX side, the effective ceiling is the **per-model** `max_context_window` in `~/.omlx/model_settings.json`, falling back to the **global** `.sampling.max_context_window` in `~/.omlx/settings.json`. `mna-bootstrap` pins the global fallback to 32768 so any freshly downloaded model works out of the box at 32k.
+`hermes/config.yaml`'s `model.context_length` (65536) caps what Hermes sends to oMLX. On the oMLX side, the effective ceiling is the **per-model** `max_context_window` in `~/.omlx/model_settings.json`, falling back to the **global** `.sampling.max_context_window` in `~/.omlx/settings.json`. `mna-bootstrap` pins the global fallback to 65536 so any freshly downloaded model works out of the box at 64k.
+
+> **Why 64k and not 32k?** Hermes Agent enforces a **hard 64,000-token minimum** and refuses to initialize below it (`Model … has a context window of 32,768 tokens, which is below the minimum 64,000 required`). Its system prompt, tool schemas, and memory consume a large slice of the window, so a smaller one isn't permitted regardless of task size. Both the config value and the oMLX cap must therefore stay ≥ 64k.
 
 Per-model overrides are **your call** — there's no `omlx` CLI for this, and the repo deliberately doesn't pre-pin settings for models it doesn't ship. To override:
 
@@ -269,11 +297,11 @@ Per-model overrides are **your call** — there's no `omlx` CLI for this, and th
     -H "Content-Type: application/json" -d "{\"api_key\":\"$KEY\"}" >/dev/null
   curl -sX PUT -b "$JAR" "http://127.0.0.1:8000/admin/api/models/<model-id>/settings" \
     -H "Content-Type: application/json" \
-    -d '{"max_context_window": 32768, "max_tokens": 8192}' | jq
+    -d '{"max_context_window": 65536, "max_tokens": 8192}' | jq
   rm -f "$JAR"
   ```
 
-When raising the window above 32k, also bump `model.context_length` in [`hermes/config.yaml`](hermes/config.yaml) to match (it must stay ≤ the oMLX value).
+When raising the window above 64k, also bump `model.context_length` in [`hermes/config.yaml`](hermes/config.yaml) to match (it must stay ≤ the oMLX value, and ≥ the 64k Hermes floor).
 
 Verify:
 
@@ -355,7 +383,7 @@ The script is idempotent. Each step is skipped if already satisfied:
 6. Tap and trust `jundot/omlx` (so `brew bundle` can load the oMLX formula)
 7. `sudo darwin-rebuild switch --flake .`
 8. Install or upgrade Apple `container` runtime (latest release from GitHub)
-9. Seed `~/.omlx/settings.json` with `host=0.0.0.0`, generated API key, and `sampling.max_context_window=32768`
+9. Seed `~/.omlx/settings.json` with `host=0.0.0.0`, generated API key, and `sampling.max_context_window=65536`
 10. Create `hermes/.env` from `.env.example` and sync `OMLX_API_KEY`
 11. `hermes/run.sh rebuild`
 

@@ -11,6 +11,7 @@
 #   down       stop the container
 #   rebuild    rebuild the toolbox image + restart
 #   status     show container status
+#   dashboard  open the browser GUI (http://localhost:9119)
 #   logs       tail -f container logs
 
 set -euo pipefail
@@ -23,13 +24,33 @@ cmd_chat() {
         'source /opt/hermes/.venv/bin/activate && hermes'
 }
 
+# Open the Hermes web dashboard (browser GUI). Same containerized agent as
+# `chat` — just a richer surface (config/keys editor, sessions, skills, and an
+# embedded chat tab). The agent stays jailed in the VM; the browser only talks
+# to the published loopback port.
+cmd_dashboard() {
+    local envf="$REPO_DIR/hermes/.env" url="http://localhost:9119"
+    "$RUN" up >/dev/null
+
+    local user pass
+    user="$(grep -E '^HERMES_DASHBOARD_BASIC_AUTH_USERNAME=' "$envf" 2>/dev/null | head -1 | cut -d= -f2-)"
+    pass="$(grep -E '^HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=' "$envf" 2>/dev/null | head -1 | cut -d= -f2-)"
+
+    echo "Hermes dashboard: $url"
+    [ -n "$user" ] && echo "  login:  ${user} / ${pass}"
+    echo "  change: edit HERMES_DASHBOARD_BASIC_AUTH_PASSWORD in hermes/.env, then 'mna-hermes rebuild'"
+    echo "  note:   first load may take a moment while the UI builds."
+    command -v open >/dev/null 2>&1 && open "$url" || true
+}
+
 case "${1:-chat}" in
-    chat)    cmd_chat ;;
-    up)      "$RUN" up ;;
-    down)    "$RUN" down ;;
-    rebuild) "$RUN" rebuild ;;
-    status)  "$RUN" status ;;
-    logs)    exec container logs -f hermes-agent ;;
-    -h|--help) sed -n '2,15p' "$0" ;;
-    *) echo "Usage: mna-hermes {chat|up|down|rebuild|status|logs}" >&2; exit 1 ;;
+    chat)      cmd_chat ;;
+    up)        "$RUN" up ;;
+    down)      "$RUN" down ;;
+    rebuild)   "$RUN" rebuild ;;
+    status)    "$RUN" status ;;
+    dashboard) cmd_dashboard ;;
+    logs)      exec container logs -f hermes-agent ;;
+    -h|--help) sed -n '2,16p' "$0" ;;
+    *) echo "Usage: mna-hermes {chat|up|down|rebuild|status|dashboard|logs}" >&2; exit 1 ;;
 esac

@@ -16,6 +16,14 @@ RUN curl -sS https://bootstrap.pypa.io/get-pip.py | /opt/hermes/.venv/bin/python
     /opt/hermes/.venv/bin/pip install --no-cache-dir --no-build-isolation \
       git+https://github.com/searxng/searxng.git@master
 
+# ── Web dashboard deps (browser GUI on :9119) ────────────
+# `hermes dashboard` needs the `web` extra (FastAPI/Uvicorn) and the `pty`
+# extra (ptyprocess) to embed the TUI chat tab over a pseudo-terminal. The
+# base image ships only the CLI/gateway, so install them explicitly. pip
+# reconciles versions against the already-installed hermes constraints.
+RUN /opt/hermes/.venv/bin/pip install --no-cache-dir \
+      fastapi "uvicorn[standard]" ptyprocess
+
 # ── SearXNG settings (can be overridden via volume mount) ─
 COPY searxng/settings.yml /etc/searxng/settings.yml
 

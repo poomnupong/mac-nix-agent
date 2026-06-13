@@ -14,8 +14,9 @@ model:
   # Must be ≤ the per-model `max_context_window` configured in oMLX
   # (admin UI → Models → <model> → Settings). Falls back to the global
   # `.sampling.max_context_window` in ~/.omlx/settings.json (bootstrap.sh
-  # pins this to 32768).
-  context_length: 32768
+  # pins this to 65536). Hermes Agent enforces a hard 64K floor and refuses
+  # to start below it, so keep this ≥ 65536.
+  context_length: 65536
 
 fallback_model:
   provider: ollama-cloud
