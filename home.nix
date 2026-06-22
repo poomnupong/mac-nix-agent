@@ -47,6 +47,13 @@
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
     initContent = ''
+      # Homebrew (Apple Silicon installs to /opt/homebrew). Put brew and the
+      # tools it manages (e.g. omlx) on PATH. Nix manages most packages, but
+      # brew-installed casks/services still need their prefix on PATH.
+      if [ -x /opt/homebrew/bin/brew ]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+      fi
+
       # Repo operations live in <repo>/bin as `mna-*` commands (mna-bootstrap,
       # mna-update, mna-doctor, mna-omlx). Put them on PATH so they're callable
       # from anywhere and tab-complete as a group (`mna-<TAB>`).
