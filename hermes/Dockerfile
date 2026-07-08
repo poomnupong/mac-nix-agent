@@ -27,14 +27,12 @@ RUN /opt/hermes/.venv/bin/pip install --no-cache-dir \
 # ── SearXNG settings (can be overridden via volume mount) ─
 COPY searxng/settings.yml /etc/searxng/settings.yml
 
-# ── Patch /model picker to show only configured providers ─
-# Upstream includes ~30 canonical cloud providers (anthropic, openai, …) as
-# "unconfigured" placeholders, forcing the user to scroll past them all to
-# reach a single local provider. Flip include_unconfigured=False so the
-# picker lists only providers the user actually has credentials for.
-RUN sed -i 's/include_unconfigured=True,$/include_unconfigured=False,/' \
-    /opt/hermes/tui_gateway/server.py && \
-    grep -q 'include_unconfigured=False' /opt/hermes/tui_gateway/server.py
+# ── /model picker shows only configured providers ─────────
+# We used to patch tui_gateway/server.py to flip include_unconfigured to
+# False so the picker wouldn't list ~30 unconfigured cloud providers. As of
+# the current hermes-agent image that's the upstream default — the handler
+# now reads include_unconfigured from request params (defaulting to False),
+# so no patch is needed. Left as a note so the intent isn't lost.
 
 # ── Entrypoint ────────────────────────────────────────────
 COPY entrypoint.sh /opt/hermes/entrypoint.sh
