@@ -34,10 +34,9 @@
   '';
 
   # ── oMLX inference server ──────────────────────────────────────
-  # Installed via Homebrew (jundot/omlx/omlx) and run by brew's stock
-  # launchd plist. Bind address and API key live in ~/.omlx/settings.json
-  # (.server.host and .auth.api_key) and are seeded by bootstrap.sh.
-  # Manage day-to-day via: brew services {start,stop,restart} jundot/omlx/omlx
+  # The official prebuilt macOS app is installed by mna-bootstrap and owns
+  # the server lifecycle. Keeping it outside Homebrew avoids source builds
+  # whose Python downloads may be blocked on managed networks.
 
   # ── Homebrew — disabled, tools managed by Nix ────────────────
   homebrew = {
@@ -55,12 +54,6 @@
       #   `--force`, `--force-cleanup` or `$HOMEBREW_ASK`.
       extraFlags = [ "--force" ];
     };
-    taps = [
-      {
-        name = "jundot/omlx";
-        clone_target = "https://github.com/jundot/omlx";
-      }
-    ];
     casks = [
       "iina"
       "visual-studio-code"
@@ -69,9 +62,7 @@
       "appcleaner"
       "google-gemini"
     ];
-    brews = [
-      "jundot/omlx/omlx"
-    ];
+    brews = [ ];
   };
 
   # Required: declare the primary user for Home Manager integration

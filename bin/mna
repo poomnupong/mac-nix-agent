@@ -1,0 +1,75 @@
+#!/bin/bash
+# mac-nix-agent - command index and dispatcher
+#
+# Usage:
+#   mna [help]                 show available commands
+#   mna help <command>         show detailed command help
+#   mna <command> [arguments]  run an mna command
+
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+show_help() {
+    cat <<'EOF'
+mac-nix-agent (mna)
+
+Usage:
+  mna [help]                 Show this command overview
+  mna help <command>         Show detailed help for a command
+  mna <command> [arguments]  Run a command
+
+Commands:
+  bootstrap   Set up or reconcile the complete workstation
+  update      Update Nix, Homebrew, and the stable oMLX app
+  doctor      Check oMLX health; add --fix to repair ownership
+  omlx        Install, update, and control the oMLX app/server
+  hermes      Control or chat with the Hermes container
+  uninstall   Remove one imperative component, data-safe by default
+
+Examples:
+  mna help omlx
+  mna omlx status
+  mna doctor --fix
+  mna hermes
+  mna update
+
+The original mna-* commands remain available and behave identically.
+EOF
+}
+
+command_script() {
+    case "$1" in
+        bootstrap|update|doctor|omlx|hermes|uninstall)
+            printf '%s/mna-%s\n' "$BIN_DIR" "$1"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+case "${1:-help}" in
+    help|-h|--help)
+        if [ "$#" -le 1 ]; then
+            show_help
+        else
+            script="$(command_script "$2")" || {
+                printf "Unknown command: %s\n\n" "$2" >&2
+                show_help >&2
+                exit 2
+            }
+            exec "$script" --help
+        fi
+        ;;
+    *)
+        command="$1"
+        shift
+        script="$(command_script "$command")" || {
+            printf "Unknown command: %s\n\n" "$command" >&2
+            show_help >&2
+            exit 2
+        }
+        exec "$script" "$@"
+        ;;
+esac

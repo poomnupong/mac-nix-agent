@@ -1,7 +1,7 @@
 #!/bin/bash
 # mac-nix-agent — factory-reset a single imperative component
 #
-# Scope: this ONLY tears down imperative runtime state (Homebrew formulae,
+# Scope: this ONLY tears down imperative runtime state (application bundles,
 # Apple `container` objects, on-disk caches). It NEVER edits darwin.nix /
 # flake.nix / home.nix, so the Nix layer stays idempotent — re-running
 # `mna-bootstrap` (or `darwin-rebuild`) cleanly reinstalls whatever you
@@ -16,7 +16,7 @@
 # Usage: mna-uninstall <component> [flags]
 #
 # Components:
-#   omlx        Stop + `brew uninstall jundot/omlx/omlx`. Keeps ~/.omlx by default.
+#   omlx        Stop + remove /Applications/oMLX.app. Keeps ~/.omlx by default.
 #   hermes      `run.sh down` + delete container + remove toolbox image.
 #               Keeps the hermes-data volume and host files (.env, memories, workspace).
 #   container   Apple container runtime via /usr/local/bin/uninstall-container.sh.
@@ -48,7 +48,7 @@ run()  { # echo + execute, or just echo under --dry-run
 COMPONENT="${1:-}"
 [ -n "$COMPONENT" ] || die "Usage: mna-uninstall <omlx|hermes|container> [--purge] [--keep-models] [--keep-config] [--yes] [--dry-run]"
 case "$COMPONENT" in
-    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
 esac
 shift || true
 
@@ -83,7 +83,7 @@ fi
 uninstall_omlx() {
     local omlx_dir="$HOME/.omlx"
     log "Planning oMLX uninstall:"
-    echo "   - stop + uninstall Homebrew formula jundot/omlx/omlx"
+    echo "   - stop oMLX and remove /Applications/oMLX.app"
     if [ "$PURGE" -eq 1 ]; then
         if [ "$KEEP_MODELS" -eq 1 ] || [ "$KEEP_CONFIG" -eq 1 ]; then
             echo "   - purge $omlx_dir EXCEPT:"
@@ -97,11 +97,17 @@ uninstall_omlx() {
     fi
     confirm "Proceed with oMLX uninstall?"
 
-    if command -v brew >/dev/null 2>&1 && brew list --versions jundot/omlx/omlx >/dev/null 2>&1; then
-        run "brew services stop jundot/omlx/omlx >/dev/null 2>&1 || true"
-        run "brew uninstall jundot/omlx/omlx"
+    if [ -x "$HOME/.omlx/bin/omlx" ]; then
+        run "'$HOME/.omlx/bin/omlx' stop >/dev/null 2>&1 || true"
+    fi
+    if [ -d /Applications/oMLX.app ]; then
+        if [ -w /Applications ]; then
+            run "rm -rf '/Applications/oMLX.app'"
+        else
+            run "sudo rm -rf '/Applications/oMLX.app'"
+        fi
     else
-        warn "oMLX formula not installed — nothing to uninstall."
+        warn "oMLX.app not installed — nothing to remove."
     fi
 
     if [ "$PURGE" -eq 1 ] && [ -d "$omlx_dir" ]; then
@@ -123,7 +129,7 @@ uninstall_omlx() {
             done
         fi
     fi
-    log "oMLX uninstalled. Reinstall with: mna-bootstrap   (or: brew install jundot/omlx/omlx)"
+    log "oMLX uninstalled. Reinstall with: mna-bootstrap   (or: mna-omlx install)"
 }
 
 # ── hermes ───────────────────────────────────────────────

@@ -5,8 +5,8 @@
 This repo is a declarative, end-to-end recipe for turning a fresh M-series Mac into a self-contained AI workstation:
 
 - **Nix + nix-darwin + Home Manager** — reproducible system + user environment (CLI tools, fonts, shell, launchd services)
-- **Homebrew** — declarative casks (VS Code, Ollama, LM Studio, oMLX, etc.) managed by nix-darwin
-- **[oMLX](https://github.com/jundot/omlx)** — multi-model MLX inference server, OpenAI-compatible API on `localhost:8000`
+- **Homebrew** — declarative casks (VS Code, Ollama, LM Studio, etc.) managed by nix-darwin
+- **[oMLX](https://github.com/jundot/omlx)** — official prebuilt macOS app, with a multi-model MLX inference server and OpenAI-compatible API on `localhost:8000`
 - **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** in an Apple `container` microVM — chat-driven coding agent with built-in SearXNG, browser, and shell tools, talking to oMLX over the vmnet bridge
 
 The goal: clone the repo, run `./bin/mna-bootstrap`, and have a working `mna-hermes` chat against a locally hosted MLX model on the same Mac. Everything is reproducible — wipe the machine, re-run the script, get the same setup. No cloud dependency by default; cloud LLMs are a one-line config swap.
@@ -24,7 +24,7 @@ mkdir -p ~/repo && git clone https://github.com/<your-github-username>/mac-nix-a
 cd ~/repo/mac-nix-agent && ./bin/mna-bootstrap
 ```
 
-`mna-bootstrap` is idempotent — safe to re-run. It installs Nix, Homebrew, the Apple `container` runtime, applies the nix-darwin flake, seeds oMLX (host + API key), and brings up the Hermes container.
+`mna-bootstrap` is idempotent — safe to re-run. It installs Nix, Homebrew, the Apple `container` runtime, and the latest stable official oMLX app, applies the nix-darwin flake, seeds oMLX (host + API key), and brings up the Hermes container.
 
 > **Clone it to `~/repo/mac-nix-agent`.** [home.nix](home.nix) hard-codes `~/repo/mac-nix-agent/bin` onto your PATH — deliberately, with no path-detection wrapper, so the code stays easy to read. The first run always works from anywhere (you invoke it by path: `./bin/mna-bootstrap`). But for the bare `mna-*` commands to resolve afterward, keep the repo here — or change that single PATH line in `home.nix` if you clone elsewhere.
 >
@@ -34,10 +34,11 @@ cd ~/repo/mac-nix-agent && ./bin/mna-bootstrap
 >
 > | Command | What |
 > |---------|------|
+> | `mna [help]` | Show all available commands. Use `mna help <command>` for detailed help, or `mna <command> ...` as a shorter form of `mna-<command> ...`. |
 > | `mna-bootstrap` | First-time setup (idempotent). On a fresh Mac run `./bin/mna-bootstrap` (PATH isn't wired yet). |
-> | `mna-update` | Bump flake inputs + upgrade Homebrew **verbosely** + `darwin-rebuild` + restart oMLX. |
+> | `mna-update` | Bump flake inputs + upgrade Homebrew **verbosely** + `darwin-rebuild` + update/restart the stable oMLX app. |
 > | `mna-doctor [--fix]` | Diagnose the oMLX stack (stale launchd agent, port 8000 conflict, service/API health). `--fix` repairs. |
-> | `mna-omlx <cmd>` | oMLX service control: `status`/`start`/`stop`/`restart`/`logs`/`models`/`upgrade`/`key`. |
+> | `mna-omlx <cmd>` | oMLX app install/control: `status`/`install`/`upgrade`/`start`/`stop`/`restart`/`logs`/`models`/`key`. |
 > | `mna-hermes [cmd]` | Hermes control: bare = `chat`; also `up`/`down`/`rebuild`/`status`/`dashboard`/`logs`. |
 > | `mna-uninstall <c>` | Factory-reset one imperative component (`omlx`/`hermes`/`container`). Data-safe by default; `--purge` removes data, `--keep-models`/`--keep-config` spare parts of it. Never edits the Nix files. |
 
@@ -47,7 +48,8 @@ Already bootstrapped? Day-to-day commands:
 
 ```bash
 cd ~/repo/mac-nix-agent
-mna-update                             # flake update + verbose brew upgrade + rebuild + restart oMLX
+mna help                               # discover commands and detailed help
+mna-update                             # flake/brew update + rebuild + stable oMLX app update
 mna-doctor                             # health-check the oMLX stack (add --fix to repair)
 mna-hermes up                          # start Hermes agent container
 mna-hermes                             # interactive chat (bare = chat)
@@ -142,7 +144,7 @@ vim .env   # set API keys for your chosen provider
 
 | Provider | Setup | GPU required? |
 |----------|-------|:---:|
-| **oMLX** (default) | Install via Homebrew, runs on `:8000`. Set `base_url` in `config.yaml` | Yes (Metal) |
+| **oMLX** (default) | `mna-bootstrap` installs the official app; it runs on `:8000`. Set `base_url` in `config.yaml` | Yes (Metal) |
 | **Ollama** (local) | `ollama serve` on host. Point `base_url` to `host.container.internal:11434` | Yes |
 | **LM Studio / vLLM** | Start server on host, point `base_url` accordingly | Yes |
 | **Ollama Cloud** | Set `provider: ollama-cloud` in `config.yaml`, add `OLLAMA_API_KEY` to `.env` | No |
@@ -206,41 +208,38 @@ hermes/
 
 ## Local services
 
-Services are defined as launchd agents in `darwin.nix` and use negligible resources when idle — GPU (Metal) is only engaged during active inference. **Ollama, Open-WebUI, and ComfyUI are currently commented out.** Uncomment the relevant blocks in `darwin.nix` and run `sudo darwin-rebuild switch --flake .` to enable them.
+Local inference services use negligible resources when idle — GPU (Metal) is only engaged during active inference. oMLX is owned by its official macOS app; optional Nix launchd services remain defined in `darwin.nix`. **Ollama, Open-WebUI, and ComfyUI are currently commented out.** Uncomment the relevant blocks in `darwin.nix` and run `sudo darwin-rebuild switch --flake .` to enable them.
 
 | Service | URL | Port | Log | Status |
 |---------|-----|------|-----|--------|
-| oMLX admin | http://127.0.0.1:8000/admin | 8000 | `/opt/homebrew/var/log/omlx.log` | `brew services` |
+| oMLX admin | http://127.0.0.1:8000/admin | 8000 | `~/Library/Application Support/oMLX/logs/server.log` | `mna-omlx status` |
 | ComfyUI | http://127.0.0.1:8188 | 8188 | `~/Library/Logs/comfyui.log` | commented out |
 | Ollama API | http://127.0.0.1:11434 | 11434 | `~/Library/Logs/ollama.log` | commented out |
 | Open-WebUI | http://127.0.0.1:8080 | 8080 | `~/Library/Logs/open-webui.log` | commented out |
 
 ### oMLX — bind address & API key
 
-oMLX is installed via Homebrew (`jundot/omlx/omlx`) and run by brew's stock launchd plist (no nix-darwin patching). Configuration lives entirely in `~/.omlx/settings.json`:
+oMLX is installed from the upstream stable, notarized DMG. The app embeds Python, MLX, and the native kernels, so installation and updates do not build from source or download dependencies from PyPI. The app owns the server lifecycle and installs a CLI shim at `~/.omlx/bin/omlx`. Configuration lives entirely in `~/.omlx/settings.json`:
 
 - `.server.host = "0.0.0.0"` — so the Apple Container VM can reach it at `192.168.64.1:8000`
 - `.auth.api_key = "omlx-sk-…"` — required for Bearer auth (also editable from the admin UI → API Keys)
 
 `mna-bootstrap` seeds both on first run and writes the same key into `hermes/.env` as `OMLX_API_KEY`.
 
-#### Untrusted tap
+#### Binary installation and stable updates
 
-Homebrew 5.x refuses to load formulae from third-party taps until you explicitly **trust** them. Because nix-darwin runs `brew bundle` non-interactively during activation, an untrusted `jundot/omlx` tap aborts `darwin-rebuild` with:
+`mna-omlx install` and `mna-omlx upgrade` use the same idempotent flow:
 
-```
-Error: Refusing to load formula jundot/omlx/omlx from untrusted tap jundot/omlx.
-```
+1. Query the upstream GitHub releases API and reject drafts, prereleases, and version tags containing `rc`, `dev`, `alpha`, or `beta`. If the API is unavailable or rate-limited, use the public releases feed as the stable-version fallback.
+2. Select the official DMG whose filename supports the current macOS major version. No Python package, compiler, Homebrew formula, or PyPI download is involved.
+3. Read the installed version from `/Applications/oMLX.app/Contents/Info.plist`. If it matches the newest stable version, skip the download and installation.
+4. Otherwise download the DMG to a temporary directory, mount it read-only, stage `oMLX.app`, verify the full code signature with `codesign`, and require a successful Gatekeeper assessment from `spctl` before replacing anything.
+5. Stop the old app-managed server, replace `/Applications/oMLX.app` through a staging path, and remove the superseded Homebrew formula if it is still present.
+6. Leave `~/.omlx` untouched, preserving downloaded models, server settings, model settings, and the API key. Bootstrap then reconciles the bind address and shared Hermes API key and restarts the app-managed server.
 
-`mna-bootstrap` taps and trusts it automatically (before the `darwin-rebuild` step). If you hit this on an existing machine, trust it once and re-run:
+Run `mna-omlx upgrade` to check only oMLX. Run `mna-update` to update Homebrew and Nix first, activate nix-darwin, check the same stable oMLX channel, and restart the server. The app's built-in stable updater remains available as a one-click alternative.
 
-```bash
-eval "$(/opt/homebrew/bin/brew shellenv)"   # if `brew` isn't on PATH yet
-brew trust jundot/omlx
-sudo darwin-rebuild switch --flake .
-```
-
-> nix-darwin's `homebrew` module has no declarative `trust` option yet, so this lives in `mna-bootstrap` rather than `darwin.nix`. A future nix-darwin release exposing Homebrew's `trusted: true` Brewfile attribute would let us drop the manual step.
+If `/Applications` requires administrator access, the command displays `Administrator Password:` and waits for you to type your macOS password directly into the terminal. Input is intentionally hidden by macOS; the script never reads, stores, pipes, or supplies the password. If the installed version already matches the stable release, no password is needed.
 
 ### Download your first model
 
@@ -316,18 +315,19 @@ Rotate the key:
 ```bash
 NEW="omlx-sk-$(openssl rand -hex 24)"
 jq --arg k "$NEW" '.auth.api_key = $k' ~/.omlx/settings.json > /tmp/s && mv /tmp/s ~/.omlx/settings.json
-brew services restart jundot/omlx/omlx
+mna-omlx restart
 sed -i.bak "s|^OMLX_API_KEY=.*|OMLX_API_KEY=$NEW|" ~/repo/mac-nix-agent/hermes/.env && rm ~/repo/mac-nix-agent/hermes/.env.bak
 mna-hermes down && mna-hermes up
 ```
 
-Service control:
+App and server control:
 
 ```bash
-brew services start   jundot/omlx/omlx
-brew services stop    jundot/omlx/omlx
-brew services restart jundot/omlx/omlx
-brew services list
+mna-omlx status
+mna-omlx start
+mna-omlx stop
+mna-omlx restart
+mna-omlx upgrade       # latest stable official DMG
 ```
 
 ### Controlling services
@@ -380,12 +380,11 @@ The script is idempotent. Each step is skipped if already satisfied:
 3. Prompt for git `user.name` / `user.email` if `~/.gitconfig` doesn't have them yet
 4. Install Determinate Nix
 5. Install Homebrew
-6. Tap and trust `jundot/omlx` (so `brew bundle` can load the oMLX formula)
-7. `sudo darwin-rebuild switch --flake .`
-8. Install or upgrade Apple `container` runtime (latest release from GitHub)
-9. Seed `~/.omlx/settings.json` with `host=0.0.0.0`, generated API key, and `sampling.max_context_window=65536`
-10. Create `hermes/.env` from `.env.example` and sync `OMLX_API_KEY`
-11. `hermes/run.sh rebuild`
+6. `sudo darwin-rebuild switch --flake .`
+7. Install or upgrade Apple `container` runtime (latest release from GitHub)
+8. Install the latest stable official oMLX app and seed `~/.omlx/settings.json` with `host=0.0.0.0`, generated API key, and `sampling.max_context_window=65536`
+9. Create `hermes/.env` from `.env.example` and sync `OMLX_API_KEY`
+10. `hermes/run.sh rebuild`
 
 ### Manual (if you prefer step-by-step)
 
@@ -429,14 +428,6 @@ nix-darwin manages Homebrew declaratively but does not install it — do that on
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-Then trust the third-party oMLX tap, or the `brew bundle` run inside `darwin-rebuild` (next step) will abort with `Refusing to load formula … from untrusted tap`:
-
-```bash
-eval "$(/opt/homebrew/bin/brew shellenv)"   # if `brew` isn't on PATH yet
-brew tap jundot/omlx https://github.com/jundot/omlx
-brew trust jundot/omlx
 ```
 
 #### 5. Build and activate
@@ -507,12 +498,12 @@ To uninstall (keep user data with `-k`, remove with `-d`):
 
 ```bash
 mna-uninstall omlx        # remove oMLX, keep ~/.omlx (models + settings) intact
-mna-bootstrap             # Nix reinstalls the formula; step 8 reseeds settings.json
+mna-bootstrap             # reinstalls the stable app; step 8 reseeds settings.json
 ```
 
 | Component | Default (data-safe) | `--purge` adds | Reinstall |
 |-----------|---------------------|----------------|-----------|
-| `omlx` | stop + `brew uninstall`; keep `~/.omlx/` | `rm -rf ~/.omlx` | `mna-bootstrap` |
+| `omlx` | stop + remove `/Applications/oMLX.app`; keep `~/.omlx/` | `rm -rf ~/.omlx` | `mna-bootstrap` |
 | `hermes` | stop + delete container + remove image; keep `hermes-data` volume & host files | delete `hermes-data` volume | `mna-hermes rebuild` |
 | `container` | `uninstall-container.sh -k` (keep data) | `… -d` (delete data) | `mna-bootstrap` |
 
@@ -564,10 +555,14 @@ sudo darwin-rebuild switch --flake ~/repo/mac-nix-agent
 
 ```bash
 cd ~/repo/mac-nix-agent
-mna-update                 # flake update + verbose brew upgrade + darwin-rebuild + restart oMLX
+mna-update                 # flake/brew update + darwin-rebuild + stable oMLX app update
 ```
 
-`mna-update` runs `brew upgrade` with `--verbose` **before** `darwin-rebuild`, so the long, silent Homebrew step inside activation (which can look like a hang on a big bottle such as oMLX) has nothing left to do quietly. To do it by hand instead:
+`mna-update` runs `brew upgrade` with `--verbose` **before** `darwin-rebuild`, then checks the stable oMLX app channel separately.
+
+At startup, `mna-update` deliberately clears any cached sudo authorization and displays `Administrator Password:`. Type the macOS administrator password directly into that terminal (no characters will appear); the command waits for the response and then reuses sudo's credential ticket for the rebuild. `mna-bootstrap` uses the same interaction before its first system activation.
+
+To update the Nix layer by hand instead:
 
 ```bash
 sudo nix flake update
@@ -593,17 +588,15 @@ GIT_CONFIG_GLOBAL=~/.gitconfig git config --global user.email "you@example.com"
 
 ---
 
-### oMLX won't start / `darwin-rebuild` seems to hang
+### oMLX won't start / old formula cannot download dependencies
 
-Two distinct symptoms, both handled by the repo commands:
-
-- **`darwin-rebuild` looks frozen with no output.** It isn't — `homebrew.onActivation.upgrade = true` runs `brew upgrade` silently during activation, and a big bottle (oMLX is a ~1.6 GB / 35k-file Python venv) can take several minutes with zero progress. Use `mna-update` instead; it upgrades Homebrew **verbosely first** so you see progress.
-- **oMLX service stuck in `error`, log shows `[Errno 48] Address already in use`.** Usually a stale `org.nixos.omlx` launchd agent (from an older `darwin.nix` that ran oMLX as a Nix service) is squatting port 8000 with `KeepAlive`, so the Homebrew service can never bind. Diagnose and repair:
+- **Old Homebrew install fails on `files.pythonhosted.org`.** Managed networks may block the PyPI CDN used by the source formula. Run `mna-omlx install`; it installs the self-contained official DMG and removes the superseded formula without touching `~/.omlx`.
+- **Port 8000 is already in use or lifecycle control fails.** A stale Nix/Brew launch agent or orphaned server may be holding the port. Diagnose and repair:
 
   ```bash
   mna-doctor          # report what's wrong
-  mna-doctor --fix    # boot out the stale agent, kill orphans, restart the service
-  mna-omlx status     # confirm: version, service started, port bound, HTTP 200
+  mna-doctor --fix    # remove stale ownership and restart the app-managed server
+  mna-omlx status     # confirm: app version, port bound, HTTP 200
   ```
 
 ---

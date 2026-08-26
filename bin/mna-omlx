@@ -1,36 +1,53 @@
 #!/bin/bash
-# mac-nix-agent — oMLX service control
-#
-# Thin, memorable wrapper over the Homebrew-managed oMLX service so you
-# don't have to retype `brew services ... jundot/omlx/omlx` (and so brew
-# is always loaded onto PATH first — home-manager's rc doesn't do it).
+# mac-nix-agent - install and control the official oMLX macOS app
 #
 # Usage: mna-omlx <command>
-#   status     version, service state, port, API health, served models
-#   start      start the service
-#   stop       stop the service
-#   restart    restart the service (do this after every upgrade)
-#   logs       tail -f the oMLX log
+#   status     app version, process, port, API health, served models
+#   install    install the latest stable official DMG (also migrates Homebrew)
+#   upgrade    install the latest stable official DMG when newer
+#   start      launch the app and start its managed server
+#   stop       stop the app-managed server
+#   restart    restart the app-managed server
+#   logs       tail the app-managed server log
 #   models     list models the server is currently serving
-#   upgrade    brew upgrade oMLX (verbose) then restart onto the new binary
 #   key        print the API key from ~/.omlx/settings.json
 
 set -euo pipefail
 
-SERVICE="jundot/omlx/omlx"
+APP="/Applications/oMLX.app"
+APP_CLI="$APP/Contents/MacOS/omlx-cli"
+USER_CLI="$HOME/.omlx/bin/omlx"
 PORT=8000
-LOG="/opt/homebrew/var/log/omlx.log"
+LOG="$HOME/Library/Application Support/oMLX/logs/server.log"
 SETTINGS="$HOME/.omlx/settings.json"
+RELEASES_API="https://api.github.com/repos/jundot/omlx/releases?per_page=30"
+BREW_SERVICE="jundot/omlx/omlx"
 
-# ── Load Homebrew onto PATH ──────────────────────────────
-if ! command -v brew >/dev/null 2>&1; then
-    for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
-        [ -x "$b" ] && eval "$("$b" shellenv)" && break
-    done
-fi
-command -v brew >/dev/null 2>&1 || { echo "brew not found on PATH." >&2; exit 1; }
+log()  { printf "\033[1;34m==>\033[0m %s\n" "$*"; }
+warn() { printf "\033[1;33m!!\033[0m  %s\n" "$*" >&2; }
+die()  { printf "\033[1;31mxx\033[0m  %s\n" "$*" >&2; exit 1; }
 
-log() { printf "\033[1;34m==>\033[0m %s\n" "$*"; }
+request_admin() {
+    log "Administrator access is required to install oMLX in /Applications."
+    printf "    Enter your macOS password at the prompt (input stays hidden).\n"
+    sudo -k
+    sudo -p "Administrator Password: " -v
+}
+
+omlx_cli() {
+    if [ -x "$USER_CLI" ]; then
+        printf '%s\n' "$USER_CLI"
+    elif [ -x "$APP_CLI" ]; then
+        printf '%s\n' "$APP_CLI"
+    else
+        return 1
+    fi
+}
+
+app_version() {
+    [ -d "$APP" ] || return 1
+    /usr/bin/defaults read "$APP/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null
+}
 
 api_key() {
     [ -f "$SETTINGS" ] || return 1
@@ -38,19 +55,160 @@ api_key() {
     jq -r '.auth.api_key // empty' "$SETTINGS"
 }
 
+release_info() {
+    local releases="" release="" macos_major asset version asset_name
+    command -v jq >/dev/null 2>&1 || die "jq is required."
+    macos_major="$(sw_vers -productVersion | cut -d. -f1)"
+    if releases="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$RELEASES_API" 2>/dev/null)"; then
+        release="$(printf '%s' "$releases" | jq -c '
+            map(select(.draft == false and .prerelease == false))
+            | map(select(.tag_name | test("(rc|dev|alpha|beta)[0-9.-]*$"; "i") | not))
+            | sort_by(.published_at) | last')"
+    fi
+
+    if [ -z "$release" ] || [ "$release" = "null" ]; then
+        warn "GitHub release API unavailable; using the public releases feed."
+        version="$(curl -fsSL https://github.com/jundot/omlx/releases.atom \
+            | grep -oE '<title>v?[0-9]+\.[0-9]+\.[0-9]+</title>' \
+            | head -n1 | sed -E 's#</?title>##g; s/^[vV]//')"
+        [ -n "$version" ] || die "No stable oMLX release found."
+        case "$macos_major" in
+            15) asset_name="oMLX-${version}-macos15-sequoia.dmg" ;;
+            26|27) asset_name="oMLX-${version}-macos26-27.dmg" ;;
+            *) die "Cannot resolve an oMLX DMG for macOS $macos_major without the GitHub API." ;;
+        esac
+        printf '%s\t%s\t%s\n' "$version" "$asset_name" \
+            "https://github.com/jundot/omlx/releases/download/v${version}/${asset_name}"
+        return 0
+    fi
+
+    asset="$(printf '%s' "$release" | jq -r --arg major "$macos_major" '
+        [.assets[] | select(.name | test("\\.dmg$"; "i"))
+          | . + {ranges: ([.name | scan("macos([0-9]+)(?:-([0-9]+))?")]
+              | map({lo: (.[0] | tonumber), hi: ((if (.[1] // "") == "" then .[0] else .[1] end) | tonumber)}))}]
+        | (map(select(any(.ranges[]; .lo == ($major | tonumber) and .hi == ($major | tonumber))))[0]
+           // map(select(any(.ranges[]; .lo <= ($major | tonumber) and .hi >= ($major | tonumber))))[0]
+           // if length == 1 then .[0] else null end)
+        | select(. != null) | [.name, .browser_download_url] | @tsv')"
+    [ -n "$asset" ] || die "Stable oMLX has no DMG compatible with macOS $macos_major."
+    printf '%s\t%s\n' "$(printf '%s' "$release" | jq -r '.tag_name | sub("^[vV]"; "")')" "$asset"
+}
+
+remove_legacy_brew() {
+    if command -v brew >/dev/null 2>&1 && brew list --versions "$BREW_SERVICE" >/dev/null 2>&1; then
+        log "Removing the superseded Homebrew formula (keeping ~/.omlx)..."
+        brew services stop "$BREW_SERVICE" >/dev/null 2>&1 || true
+        brew unpin "$BREW_SERVICE" >/dev/null 2>&1 || true
+        HOMEBREW_NO_AUTOREMOVE=1 brew uninstall "$BREW_SERVICE"
+    fi
+}
+
+install_app() {
+    local info version asset_name url current tmp_dir dmg mount_point staged had_app=0
+    info="$(release_info)"
+    version="$(printf '%s' "$info" | cut -f1)"
+    asset_name="$(printf '%s' "$info" | cut -f2)"
+    url="$(printf '%s' "$info" | cut -f3)"
+    current="$(app_version 2>/dev/null || true)"
+
+    if [ "$current" = "$version" ]; then
+        remove_legacy_brew
+        log "oMLX $version is already installed."
+        return 0
+    fi
+
+    [ -d "$APP" ] && had_app=1
+
+    log "Installing official oMLX $version ($asset_name)..."
+    tmp_dir="$(mktemp -d -t mna-omlx)"
+    dmg="$tmp_dir/$asset_name"
+    mount_point=""
+    trap '[ -n "${mount_point:-}" ] && hdiutil detach "$mount_point" -force >/dev/null 2>&1 || true; rm -rf "${tmp_dir:-}"' EXIT
+    curl -fL --retry 3 --progress-bar -o "$dmg" "$url"
+    mount_point="$(hdiutil attach -nobrowse -readonly "$dmg" | awk -F'\t' '/\/Volumes\// {print $NF; exit}')"
+    [ -n "$mount_point" ] || die "Could not mount $asset_name."
+    staged="$tmp_dir/oMLX.app"
+    /usr/bin/ditto "$mount_point/oMLX.app" "$staged"
+    /usr/bin/codesign --verify --deep --strict "$staged" 2>/dev/null \
+        || die "The downloaded oMLX app has an invalid code signature."
+    /usr/sbin/spctl --assess --type execute "$staged" 2>/dev/null \
+        || die "Gatekeeper rejected the downloaded oMLX app."
+
+    if command -v brew >/dev/null 2>&1 && brew list --versions "$BREW_SERVICE" >/dev/null 2>&1; then
+        log "Stopping the old Homebrew oMLX service..."
+        brew services stop "$BREW_SERVICE" >/dev/null 2>&1 || true
+    fi
+    if [ "$had_app" -eq 1 ]; then
+        /usr/bin/osascript -e 'tell application id "app.omlx" to quit' >/dev/null 2>&1 || true
+        for _ in $(seq 1 20); do
+            pgrep -f '/oMLX.app/Contents/MacOS/oMLX' >/dev/null 2>&1 || break
+            sleep 1
+        done
+    fi
+    pkill -f omlx-server >/dev/null 2>&1 || true
+
+    if [ -w /Applications ]; then
+        rm -rf /Applications/.oMLX-install.app
+        /usr/bin/ditto "$staged" /Applications/.oMLX-install.app
+        rm -rf "$APP"
+        mv /Applications/.oMLX-install.app "$APP"
+    else
+        request_admin
+        sudo rm -rf /Applications/.oMLX-install.app
+        sudo /usr/bin/ditto "$staged" /Applications/.oMLX-install.app
+        sudo rm -rf "$APP"
+        sudo mv /Applications/.oMLX-install.app "$APP"
+    fi
+
+    hdiutil detach "$mount_point" >/dev/null 2>&1 \
+        || hdiutil detach "$mount_point" -force >/dev/null 2>&1 \
+        || warn "Could not detach $mount_point; macOS will clean it up later."
+    mount_point=""
+    rm -rf "$tmp_dir"
+    trap - EXIT
+
+    remove_legacy_brew
+    [ "$had_app" -eq 1 ] && open -g "$APP"
+    log "Installed oMLX $version. Start it with 'mna-omlx start'."
+    log "Future stable updates are available in the app or via 'mna-omlx upgrade'."
+}
+
 cmd_status() {
     log "Version"
-    brew list --versions "$SERVICE" 2>/dev/null || echo "  (not installed)"
-    log "Service"
-    brew services list 2>/dev/null | awk 'NR==1 || $1=="omlx"'
+    if version="$(app_version 2>/dev/null)"; then
+        echo "  oMLX.app $version"
+    else
+        echo "  (app not installed)"
+    fi
+    log "Application"
+    pgrep -fl '/oMLX.app/Contents/MacOS/oMLX' 2>/dev/null || echo "  (not running)"
     log "Port :$PORT"
     lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || echo "  (nothing listening)"
     log "API"
     local key code
     key="$(api_key || true)"
     code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' \
-        -H "Authorization: Bearer ${key:-}" "http://127.0.0.1:$PORT/v1/models" 2>/dev/null)"
-    echo "  http://127.0.0.1:$PORT/v1/models → HTTP ${code:-000}"
+        -H "Authorization: Bearer ${key:-}" "http://127.0.0.1:$PORT/v1/models" 2>/dev/null || true)"
+    echo "  http://127.0.0.1:$PORT/v1/models -> HTTP ${code:-000}"
+}
+
+cmd_lifecycle() {
+    local cli command="$1" listener_pid=""
+    cli="$(omlx_cli)" || die "oMLX.app is not installed. Run: mna-omlx install"
+    if ! pgrep -f '/oMLX.app/Contents/MacOS/oMLX' >/dev/null 2>&1; then
+        listener_pid="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -n1)"
+        if [ -n "$listener_pid" ] && lsof -p "$listener_pid" 2>/dev/null \
+                | awk '$4 == "txt" { print $9 }' | grep -q '^/Applications/oMLX.app/'; then
+            kill "$listener_pid" >/dev/null 2>&1 || true
+        fi
+        rm -f "$HOME/Library/Application Support/oMLX/control.sock"
+        if [ "$command" = "stop" ]; then
+            echo "oMLX stopped"
+            return 0
+        fi
+        open -g "$APP"
+    fi
+    "$cli" "$command"
 }
 
 cmd_models() {
@@ -60,27 +218,16 @@ cmd_models() {
         | jq -r '.data[].id' 2>/dev/null || { echo "Server not answering on :$PORT." >&2; exit 1; }
 }
 
-cmd_upgrade() {
-    log "Upgrading oMLX (verbose)..."
-    brew update
-    if brew outdated --quiet 2>/dev/null | grep -q '/omlx$\|^omlx$'; then
-        brew upgrade --verbose "$SERVICE"
-        log "Restarting oMLX onto the new binary..."
-        brew services restart "$SERVICE"
-    else
-        log "oMLX already up to date."
-    fi
-}
-
 case "${1:-status}" in
     status)  cmd_status ;;
-    start)   brew services start   "$SERVICE" ;;
-    stop)    brew services stop    "$SERVICE" ;;
-    restart) brew services restart "$SERVICE" ;;
-    logs)    exec tail -f "$LOG" ;;
+    install) install_app ;;
+    upgrade) install_app ;;
+    start)   cmd_lifecycle start ;;
+    stop)    cmd_lifecycle stop ;;
+    restart) cmd_lifecycle restart ;;
+    logs)    mkdir -p "$(dirname "$LOG")"; touch "$LOG"; exec tail -f "$LOG" ;;
     models)  cmd_models ;;
-    upgrade) cmd_upgrade ;;
     key)     api_key || { echo "No API key found in $SETTINGS." >&2; exit 1; } ;;
-    -h|--help) sed -n '2,16p' "$0" ;;
-    *) echo "Usage: mna-omlx {status|start|stop|restart|logs|models|upgrade|key}" >&2; exit 1 ;;
+    -h|--help) sed -n '2,14p' "$0" ;;
+    *) echo "Usage: mna-omlx {status|install|upgrade|start|stop|restart|logs|models|key}" >&2; exit 1 ;;
 esac
