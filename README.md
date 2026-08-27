@@ -17,10 +17,10 @@ The goal: clone the repo, run `./bin/mna-bootstrap`, and have a working `mna-her
 
 ## Quick start
 
-Fresh Mac? One command:
+Fresh Mac? One bootstrap command after cloning:
 
 ```bash
-mkdir -p ~/repo && git clone https://github.com/<your-github-username>/mac-nix-agent.git ~/repo/mac-nix-agent
+mkdir -p ~/repo && git clone https://github.com/poomnupong/mac-nix-agent.git ~/repo/mac-nix-agent
 cd ~/repo/mac-nix-agent && ./bin/mna-bootstrap
 ```
 
@@ -44,6 +44,21 @@ cd ~/repo/mac-nix-agent && ./bin/mna-bootstrap
 > | `mna-uninstall <c>` | Factory-reset one imperative component (`omlx`/`hermes`/`container`). Data-safe by default; `--purge` removes data, `--keep-models`/`--keep-config` spare parts of it. Never edits the Nix files. |
 
 > **Note:** `mna-bootstrap` writes a gitignored `local.nix` with your `username` and `hostname`. Lifecycle commands build a temporary Nix source from tracked files plus `local.nix`, so normal `git status` stays clean and ignored secrets/runtime data stay out of the Nix store.
+
+Bootstrap creates local state without staging it:
+
+| Local artifact | Purpose | Recreated when missing? | Preserved by updates/rebuilds? |
+|---|---|:---:|:---:|
+| `local.nix` | This Mac's username and hostname | By `mna-bootstrap` | Yes |
+| `hermes/.env` | API keys and dashboard credentials (`0600`) | By `mna-bootstrap` | Yes |
+| `hermes/config.yaml` | Live Hermes settings, seeded from the tracked example | By `mna-hermes up` | Yes |
+| `hermes/data/` | Memories and host-backed agent state | By `mna-hermes up` | Yes |
+| `hermes/workspace/` | Files exchanged with the agent | By `mna-hermes up` | Yes |
+| `hermes-data` volume | Sessions, plugins, cron state, caches, and container-side state | By `mna-hermes up` | Yes; deleted only by `mna-uninstall hermes --purge` |
+| `~/.omlx/settings.json` | oMLX server settings and API key (`0600`) | By `mna-bootstrap`/oMLX | Yes |
+| `~/.omlx/models/` | Downloaded model weights | By the user/oMLX | Yes |
+
+The repository does not ship model weights. Bootstrap starts the oMLX admin UI and Hermes dashboard; on a new Mac, the remaining user action is choosing a model that fits the machine and downloading it from <http://127.0.0.1:8000/admin>.
 
 Already bootstrapped? Day-to-day commands:
 
@@ -371,7 +386,7 @@ Models, outputs, custom nodes: `~/Library/Application Support/comfy-ui/`
 ### Automated
 
 ```bash
-mkdir -p ~/repo && git clone https://github.com/<your-github-username>/mac-nix-agent.git ~/repo/mac-nix-agent
+mkdir -p ~/repo && git clone https://github.com/poomnupong/mac-nix-agent.git ~/repo/mac-nix-agent
 cd ~/repo/mac-nix-agent
 ./bin/mna-bootstrap
 ```
@@ -403,7 +418,7 @@ Restart your terminal after installation.
 
 ```bash
 mkdir -p ~/repo
-git clone https://github.com/<your-github-username>/mac-nix-agent.git ~/repo/mac-nix-agent
+git clone https://github.com/poomnupong/mac-nix-agent.git ~/repo/mac-nix-agent
 cd ~/repo/mac-nix-agent
 ```
 
@@ -523,7 +538,7 @@ mna-uninstall omlx --purge --keep-models --keep-config   # spare both
 
 Other flags: `--yes` (skip the confirmation prompt), `--dry-run` (print what would happen, change nothing).
 
-> **Hermes host files are never deleted** — `hermes/.env`, `hermes/data/memories/`, and `hermes/workspace/` survive every `mna-uninstall hermes`, even with `--purge` (only the container's named volume is removed). Those are your backed-up state (see [Backup & restore](#backup--restore)).
+> **Hermes host files are never deleted** — `hermes/.env`, `hermes/config.yaml`, `hermes/data/memories/`, and `hermes/workspace/` survive every `mna-uninstall hermes`, even with `--purge`. The `hermes-data` named volume also survives by default, but `--purge` deletes it, including sessions and plugin/cron state.
 >
 > **Nix-managed things** (CLI packages, casks, fonts) are not handled by `mna-uninstall` — remove those by editing `home.nix` / `darwin.nix` and running `mna-update`.
 
@@ -610,7 +625,7 @@ GIT_CONFIG_GLOBAL=~/.gitconfig git config --global user.email "you@example.com"
 
 ## Backup & restore
 
-All Hermes state that can't be regenerated lives inside `hermes/`. Everything else is in this repo (git) or in Homebrew/Nix (re-installable). To survive a Mac reset:
+Hermes has two persistence layers: portable host files under `hermes/`, and the Apple Container `hermes-data` volume containing sessions, plugins, cron state, and caches. Back up the host files for configuration, credentials, memories, and workspace:
 
 **Back up:**
 
@@ -618,24 +633,48 @@ All Hermes state that can't be regenerated lives inside `hermes/`. Everything el
 cd ~/repo/mac-nix-agent
 tar czf ~/hermes-backup-$(date +%Y%m%d).tgz \
     hermes/.env \
+    hermes/config.yaml \
     hermes/data \
-    hermes/workspace \
-    hermes/config.yaml.custom 2>/dev/null || true
+  hermes/workspace
 ```
 
 Stash the tarball somewhere durable (iCloud Drive, external disk, encrypted USB — it contains your API key, so treat it like a secret).
+
+To preserve dashboard/chat sessions and other container-side state too, export the named volume while Hermes is running:
+
+```bash
+container exec hermes-agent tar czf - \
+  --exclude=.env --exclude=config.yaml \
+  --exclude=Dockerfile --exclude=entrypoint.sh \
+  --exclude=memories --exclude=workspace --exclude=lost+found \
+  -C /opt/data . > ~/hermes-volume-$(date +%Y%m%d).tgz
+```
+
+The exclusions are host bind mounts already covered by the first archive.
 
 **Restore on a fresh Mac:**
 
 ```bash
 mkdir -p ~/repo
-git clone https://github.com/<your-github-username>/mac-nix-agent.git ~/repo/mac-nix-agent
+git clone https://github.com/poomnupong/mac-nix-agent.git ~/repo/mac-nix-agent
 cd ~/repo/mac-nix-agent
-tar xzf ~/hermes-backup-YYYYMMDD.tgz   # restores hermes/.env + data + workspace
+tar xzf ~/hermes-backup-YYYYMMDD.tgz   # restores .env + config + memories + workspace
 ./bin/mna-bootstrap
 ```
 
-`mna-bootstrap` will overwrite `OMLX_API_KEY` in the restored `.env` with the new machine's oMLX key (the old one is dead anyway), but your `hermes/data/memories/*` and `hermes/workspace/` files come through verbatim — they're in the tarball, not the public repo.
+`mna-bootstrap` will reconcile `OMLX_API_KEY` in the restored `.env` with the new machine's oMLX key, while your live Hermes config, memories, and workspace come through verbatim — they're in the tarball, not the public repo.
+
+If you also exported `hermes-data`, restore it after bootstrap, then restart Hermes:
+
+```bash
+./bin/mna-hermes down
+container delete hermes-agent
+cat ~/hermes-volume-YYYYMMDD.tgz | container run --rm -i \
+  --user root --entrypoint /bin/tar \
+  -v hermes-data:/opt/data hermes-toolbox:latest \
+  xzf - -C /opt/data
+./bin/mna-hermes up
+```
 
 If you only care about the agent's "identity" (memories) and don't mind reconfiguring everything else, the minimum backup is just `hermes/data/memories/`.
 

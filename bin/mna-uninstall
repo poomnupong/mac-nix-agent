@@ -18,7 +18,7 @@
 # Components:
 #   omlx        Stop + remove /Applications/oMLX.app. Keeps ~/.omlx by default.
 #   hermes      `run.sh down` + delete container + remove toolbox image.
-#               Keeps the hermes-data volume and host files (.env, memories, workspace).
+#               Keeps hermes-data and host files (.env, config, memories, workspace).
 #   container   Apple container runtime via /usr/local/bin/uninstall-container.sh.
 #
 # Flags:
@@ -29,9 +29,9 @@
 #   --yes          Don't prompt for confirmation.
 #   --dry-run      Print what would happen; change nothing.
 #
-# NOTE: hermes NEVER deletes host files (hermes/.env, hermes/data/memories,
-# hermes/workspace) — those are your backed-up state. --purge only removes
-# the container's named volume.
+# NOTE: hermes NEVER deletes host files (hermes/.env, hermes/config.yaml,
+# hermes/data/memories, hermes/workspace). --purge only removes the
+# container's named volume, including sessions and plugin/cron state.
 
 set -euo pipefail
 
@@ -140,7 +140,7 @@ uninstall_hermes() {
     if [ "$PURGE" -eq 1 ]; then
         echo "   - delete container volume 'hermes-data'"
     fi
-    echo "   - host files are ALWAYS kept: hermes/.env, hermes/data/memories, hermes/workspace"
+    echo "   - host files are ALWAYS kept: hermes/.env, hermes/config.yaml, hermes/data/memories, hermes/workspace"
     confirm "Proceed with Hermes uninstall?"
 
     if command -v container >/dev/null 2>&1; then

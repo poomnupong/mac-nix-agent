@@ -310,6 +310,10 @@ if [ "$global_ctx" != "65536" ]; then
     needs_restart=1
 fi
 
+# settings.json contains the API key. Repair permissive modes on every run,
+# including files created or rewritten outside bootstrap.
+chmod 600 "$omlx_settings"
+
 log "Starting/restarting oMLX"
 "$REPO_DIR/bin/mna-omlx" restart >/dev/null
 
@@ -319,8 +323,8 @@ omlx_key="$key"
 if [ ! -f "$REPO_DIR/hermes/.env" ]; then
     log "Creating hermes/.env from .env.example"
     cp "$REPO_DIR/hermes/.env.example" "$REPO_DIR/hermes/.env"
-    chmod 600 "$REPO_DIR/hermes/.env"
 fi
+chmod 600 "$REPO_DIR/hermes/.env"
 
 # Migrate legacy OPENAI_API_KEY entry to OMLX_API_KEY if present
 if grep -qE '^OPENAI_API_KEY=' "$REPO_DIR/hermes/.env" && ! grep -qE '^OMLX_API_KEY=' "$REPO_DIR/hermes/.env"; then
@@ -329,10 +333,15 @@ if grep -qE '^OPENAI_API_KEY=' "$REPO_DIR/hermes/.env" && ! grep -qE '^OMLX_API_
     rm -f "$REPO_DIR/hermes/.env.bak"
 fi
 
-current_key="$(grep -E '^OMLX_API_KEY=' "$REPO_DIR/hermes/.env" | cut -d= -f2-)"
+current_key="$(awk -F= '/^OMLX_API_KEY=/ { sub(/^OMLX_API_KEY=/, ""); print; exit }' "$REPO_DIR/hermes/.env")"
 if [ "$current_key" != "$omlx_key" ]; then
     log "Syncing OMLX_API_KEY in hermes/.env with oMLX key"
-    sed -i.bak "s|^OMLX_API_KEY=.*|OMLX_API_KEY=$omlx_key|" "$REPO_DIR/hermes/.env"
+    if grep -q '^OMLX_API_KEY=' "$REPO_DIR/hermes/.env"; then
+        sed -i.bak "s|^OMLX_API_KEY=.*|OMLX_API_KEY=$omlx_key|" "$REPO_DIR/hermes/.env"
+    else
+        cp "$REPO_DIR/hermes/.env" "$REPO_DIR/hermes/.env.bak"
+        printf 'OMLX_API_KEY=%s\n' "$omlx_key" >> "$REPO_DIR/hermes/.env"
+    fi
     rm -f "$REPO_DIR/hermes/.env.bak"
 fi
 
@@ -368,6 +377,19 @@ dash_pass="$(grep -E '^HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=' "$envf" | head -1 
 log "Building & starting Hermes container..."
 "$REPO_DIR/hermes/run.sh" rebuild
 
+configured_model="$(awk '/^[[:space:]]*default:[[:space:]]*/ { sub(/^[[:space:]]*default:[[:space:]]*/, ""); gsub(/^['\"']|['\"']$/, ""); print; exit }' "$REPO_DIR/hermes/config.yaml")"
+model_ids="$("$REPO_DIR/bin/mna-omlx" models 2>/dev/null || true)"
+if [ -z "$model_ids" ]; then
+        next_step="Next: open the oMLX admin UI, download and load a model, set model.default
+            in hermes/config.yaml to its served ID, then run './bin/mna-hermes up'."
+elif printf '%s\n' "$model_ids" | grep -qFx "$configured_model"; then
+        next_step="Ready: ${configured_model} is available. Open the dashboard or start a chat."
+else
+        first_model="$(printf '%s\n' "$model_ids" | head -n1)"
+        next_step="Next: oMLX is serving ${first_model}, but Hermes expects ${configured_model}.
+            Update model.default in hermes/config.yaml, then run './bin/mna-hermes up'."
+fi
+
 cat <<EOF
 
 $(printf "\033[1;32mBootstrap complete.\033[0m")
@@ -382,9 +404,8 @@ $(printf "\033[1;32mBootstrap complete.\033[0m")
                change: edit HERMES_DASHBOARD_BASIC_AUTH_PASSWORD in hermes/.env,
                        then run 'mna-hermes rebuild'
   Attach:      container exec -it hermes-agent bash
-  Chat:        mna-hermes
-  Browser GUI: mna-hermes dashboard
+    Chat now:    ./bin/mna-hermes
+    Browser GUI: ./bin/mna-hermes dashboard
 
-Next: pull a model from the oMLX admin UI (or place one under ~/.omlx/models/),
-then edit hermes/config.yaml \`model.default\` and run \`mna-hermes rebuild\`.
+${next_step}
 EOF
