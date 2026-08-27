@@ -31,7 +31,6 @@
     # Modelops toolchain (see modelops/README.md)
     uv                              # Python project + venv manager
     python3Packages.huggingface-hub # `hf` CLI for downloads/uploads
-    llama-cpp                       # GGUF tooling (llama-quantize, llama-cli, etc.)
 
     # GitHub Copilot CLI (`copilot` — standalone coding-agent CLI, not the gh extension)
     github-copilot-cli

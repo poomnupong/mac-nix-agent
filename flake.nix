@@ -2,15 +2,15 @@
   description = "Declarative macOS dev environment for the Hermes agent (Nix + nix-darwin + Home Manager)";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "git+https://github.com/NixOS/nixpkgs?ref=nixpkgs-unstable&shallow=1";
 
     nix-darwin = {
-      url = "github:LnL7/nix-darwin";
+      url = "git+https://github.com/LnL7/nix-darwin?shallow=1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     home-manager = {
-      url = "github:nix-community/home-manager";
+      url = "git+https://github.com/nix-community/home-manager?shallow=1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

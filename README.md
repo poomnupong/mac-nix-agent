@@ -565,7 +565,7 @@ At startup, `mna-update` deliberately clears any cached sudo authorization and d
 To update the Nix layer by hand instead:
 
 ```bash
-sudo nix flake update
+nix flake update
 sudo darwin-rebuild switch --flake .
 ```
 

@@ -21,7 +21,7 @@ System-level (installed via Nix, available everywhere):
 |------|------|
 | `uv` | Project + venv manager (what runs everything in here) |
 | `hf` | Same `hf` CLI, system-wide for ad-hoc use |
-| `llama-quantize`, `llama-cli`, ... (from `llama-cpp`) | GGUF tooling, for the rare cases you need GGUF runtime |
+| `llama-quantize`, `llama-cli`, ... (optional `llama-cpp`) | GGUF tooling, available on demand for the rare cases you need GGUF runtime |
 
 Quantization to MLX is owned by **oMLX's built-in [oQ](https://github.com/jundot/omlx/blob/main/docs/oQ_Quantization.md)** — a calibration-driven, mixed-precision quantizer. It runs in the oMLX server (admin panel at `http://localhost:8000/admin`), **not** in this venv. We document the hand-off below.
 
@@ -232,7 +232,13 @@ Validate by running steps 1–4 end-to-end on a small model (e.g. `Qwen/Qwen2.5-
 
 ## Appendix: GGUF
 
-The MLX pipeline above does not consume GGUF. If you specifically need GGUF *output* (e.g. for Ollama or `llama-cli`), the system-level `llama-cpp` install provides:
+The MLX pipeline above does not consume GGUF. If you specifically need GGUF *output* (e.g. for Ollama or `llama-cli`), open an on-demand shell instead of adding `llama-cpp` to the default system closure:
+
+```bash
+nix shell nixpkgs#llama-cpp
+```
+
+That shell provides:
 
 ```bash
 # Convert HF safetensors → GGUF (fp16 base):

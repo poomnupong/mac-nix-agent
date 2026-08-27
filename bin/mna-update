@@ -65,7 +65,7 @@ fi
 # ── 2. Flake inputs ──────────────────────────────────────
 if [ "$do_flake" -eq 1 ]; then
     log "Bumping flake inputs (nix flake update)..."
-    sudo nix flake update
+    nix flake update
 else
     log "Skipping flake update (--no-flake) — rebuilding against pinned lock."
 fi
