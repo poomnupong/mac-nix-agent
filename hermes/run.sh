@@ -45,8 +45,25 @@ ensure_volume() {
     fi
 }
 
+ensure_config() {
+    if [ ! -f "${SCRIPT_DIR}/config.yaml" ]; then
+        if [ ! -f "${SCRIPT_DIR}/config.yaml.example" ]; then
+            echo "Error: missing ${SCRIPT_DIR}/config.yaml.example" >&2
+            exit 1
+        fi
+        echo "Creating Hermes config from config.yaml.example..."
+        cp "${SCRIPT_DIR}/config.yaml.example" "${SCRIPT_DIR}/config.yaml"
+    fi
+}
+
 ensure_image() {
-    if ! container image list --format json 2>/dev/null | jq -e ".[] | select(.reference == \"$HERMES_IMAGE\")" >/dev/null 2>&1; then
+    # Use `image inspect` rather than grepping `image list` JSON: Apple's
+    # container CLI stores images under `.configuration.name` as a
+    # fully-qualified reference (e.g. docker.io/library/hermes-toolbox:latest),
+    # with no top-level `.reference` field — so a literal match on
+    # "$HERMES_IMAGE" never hits and rebuilds every run. `image inspect`
+    # resolves the short name the same way `build -t`/`run` do.
+    if ! container image inspect "$HERMES_IMAGE" >/dev/null 2>&1; then
         echo "Building hermes-toolbox image (first time)..."
         container image pull "$BASE_IMAGE"
         container build -t "$HERMES_IMAGE" "${SCRIPT_DIR}"
@@ -64,18 +81,36 @@ sync_omlx_key() {
     local settings="$HOME/.omlx/settings.json"
     local envfile="${SCRIPT_DIR}/.env"
     [ -f "$settings" ] || return 0
-    [ -f "$envfile" ]  || return 0
-    command -v jq >/dev/null 2>&1 || return 0
+    if [ ! -f "$envfile" ]; then
+        echo "Error: missing $envfile; run mna-bootstrap first." >&2
+        return 1
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "Error: jq is required to synchronize the oMLX API key." >&2
+        return 1
+    fi
 
     local srv_key env_key
-    srv_key="$(jq -r '.auth.api_key // empty' "$settings" 2>/dev/null)"
+    if ! srv_key="$(jq -r '.auth.api_key // empty' "$settings")"; then
+        echo "Error: cannot read the oMLX API key from $settings." >&2
+        return 1
+    fi
     [ -n "$srv_key" ] || return 0
 
     env_key="$(awk -F= '/^OMLX_API_KEY=/ { sub(/^OMLX_API_KEY=/, ""); print; exit }' "$envfile")"
     if [ "$srv_key" != "$env_key" ]; then
         echo "Syncing OMLX_API_KEY from ~/.omlx/settings.json -> hermes/.env"
-        sed -i.bak "s|^OMLX_API_KEY=.*|OMLX_API_KEY=${srv_key}|" "$envfile"
+        if grep -q '^OMLX_API_KEY=' "$envfile"; then
+            sed -i.bak "s|^OMLX_API_KEY=.*|OMLX_API_KEY=${srv_key}|" "$envfile"
+        else
+            cp "$envfile" "${envfile}.bak"
+            printf 'OMLX_API_KEY=%s\n' "$srv_key" >> "$envfile"
+        fi
         rm -f "${envfile}.bak"
+        grep -qFx "OMLX_API_KEY=${srv_key}" "$envfile" || {
+            echo "Error: failed to synchronize OMLX_API_KEY in $envfile." >&2
+            return 1
+        }
     fi
 }
 
@@ -88,6 +123,9 @@ cmd_up() {
 
     # Reconcile OMLX_API_KEY with the live oMLX server before launch
     sync_omlx_key
+
+    # Seed the gitignored live config without overwriting user/dashboard edits
+    ensure_config
 
     # Build custom image if needed
     ensure_image

@@ -8,6 +8,10 @@ local.nix
 # Hermes secrets (contains API keys)
 hermes/.env
 
+# Hermes live configuration (seeded from config.yaml.example). Hermes and its
+# dashboard update this file as settings migrate or users edit them.
+hermes/config.yaml
+
 # Hermes runtime data (sessions, state.db, agent memories — all private)
 # Dir is re-created by run.sh on first `hermes-up`.
 hermes/data/

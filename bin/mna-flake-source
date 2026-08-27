@@ -1,0 +1,29 @@
+#!/bin/bash
+# Print a temporary, clean flake source containing tracked files + local.nix.
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_DIR"
+
+[ -f local.nix ] || {
+    echo "local.nix is missing; run mna-bootstrap first." >&2
+    exit 1
+}
+
+flake_source="$(mktemp -d -t mna-flake-source)"
+keep_source=0
+cleanup() {
+    [ "$keep_source" -eq 1 ] || rm -rf "$flake_source"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+while IFS= read -r -d '' file; do
+    [ -f "$file" ] || continue
+    mkdir -p "$flake_source/$(dirname "$file")"
+    cp -p "$file" "$flake_source/$file"
+done < <(git ls-files -z)
+cp -p local.nix "$flake_source/local.nix"
+
+printf '%s\n' "$flake_source"
+keep_source=1

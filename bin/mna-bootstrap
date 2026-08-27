@@ -118,17 +118,10 @@ else
     log "local.nix already matches $current_user @ $current_host — skipping."
 fi
 
-# Make the gitignored local.nix visible to the `git+file` flake.
-# `darwin-rebuild switch --flake <repo>` evaluates the flake from the git
-# tree, which excludes gitignored files. Without this, the flake exposes
-# only darwinConfigurations.<placeholder>, and darwin-rebuild (which looks
-# up the config by the machine's hostname) fails with:
-#   error: flake ... does not provide attribute '...darwinConfigurations.<host>.system'
-# Staging with --intent-to-add pulls local.nix's working-tree content into
-# the flake source WITHOUT committing it, so `git status`/upstream stay clean.
-if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git -C "$REPO_DIR" add --intent-to-add --force local.nix 2>/dev/null || true
-fi
+# Build a temporary flake source from tracked files plus local.nix. This keeps
+# ignored secrets/runtime data out of the Nix store and leaves Git untouched.
+flake_source="$("$REPO_DIR/bin/mna-flake-source")"
+trap 'rm -rf "$flake_source"' EXIT
 
 # ── 3. Git identity (prompt only if missing) ─────────────
 # We deliberately do NOT manage git identity via home-manager: it would
@@ -190,10 +183,11 @@ fi
 # ── 6. nix-darwin flake activation ───────────────────────
 log "Applying nix-darwin flake (sudo)..."
 request_admin
+"$REPO_DIR/bin/mna-brew-preflight"
 if command -v darwin-rebuild >/dev/null 2>&1; then
-    sudo darwin-rebuild switch --flake "$REPO_DIR"
+    sudo darwin-rebuild switch --flake "path:$flake_source"
 else
-    sudo nix run nix-darwin#darwin-rebuild -- switch --flake "$REPO_DIR"
+    sudo nix run nix-darwin#darwin-rebuild -- switch --flake "path:$flake_source"
 fi
 
 # ── 7. Apple `container` runtime (install or upgrade) ────

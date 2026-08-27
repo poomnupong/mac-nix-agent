@@ -46,6 +46,10 @@ if ! command -v brew >/dev/null 2>&1; then
     done
 fi
 
+# Legacy root-run Python services can leave root-owned bytecode caches inside
+# Homebrew. Remove only those generated caches before upgrade/cleanup runs.
+"$REPO_DIR/bin/mna-brew-preflight"
+
 # ── 1. Homebrew (verbose, so it's not the silent stall) ──
 if [ "$do_brew" -eq 1 ] && command -v brew >/dev/null 2>&1; then
     log "Updating Homebrew metadata..."
@@ -74,10 +78,12 @@ fi
 # brew was already upgraded above, so activation's silent brew step is a
 # no-op here.
 log "Applying nix-darwin flake (sudo)..."
+flake_source="$("$REPO_DIR/bin/mna-flake-source")"
+trap 'rm -rf "$flake_source"' EXIT
 if command -v darwin-rebuild >/dev/null 2>&1; then
-    sudo darwin-rebuild switch --flake "$REPO_DIR"
+    sudo darwin-rebuild switch --flake "path:$flake_source"
 else
-    sudo nix run nix-darwin#darwin-rebuild -- switch --flake "$REPO_DIR"
+    sudo nix run nix-darwin#darwin-rebuild -- switch --flake "path:$flake_source"
 fi
 
 # ── 4. Official oMLX app ─────────────────────────────────

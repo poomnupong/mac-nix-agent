@@ -1,0 +1,40 @@
+#!/bin/bash
+# Remove root-owned Python bytecode caches that can block Homebrew cleanup.
+
+set -euo pipefail
+
+brew_bin="${HOMEBREW_BREW_FILE:-}"
+if [ -z "$brew_bin" ]; then
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        [ -x "$candidate" ] && brew_bin="$candidate" && break
+    done
+fi
+[ -n "$brew_bin" ] || exit 0
+
+brew_prefix="$($brew_bin --prefix)"
+cache_count="$({
+    find "$brew_prefix/Cellar" -path '*/python@*/*' -user root \
+        -type d -name __pycache__ -prune -print 2>/dev/null || true
+    find "$brew_prefix/lib" -path '*/python*/site-packages/*' -user root \
+        -type d -name __pycache__ -prune -print 2>/dev/null || true
+} | wc -l | tr -d ' ')"
+
+[ "$cache_count" -gt 0 ] || exit 0
+
+printf 'Removing %s root-owned Homebrew Python bytecode cache(s)...\n' "$cache_count"
+sudo find "$brew_prefix/Cellar" -path '*/python@*/*' -user root \
+    -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+sudo find "$brew_prefix/lib" -path '*/python*/site-packages/*' -user root \
+    -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+
+remaining_count="$({
+    find "$brew_prefix/Cellar" -path '*/python@*/*' -user root \
+        -type d -name __pycache__ -prune -print 2>/dev/null || true
+    find "$brew_prefix/lib" -path '*/python*/site-packages/*' -user root \
+        -type d -name __pycache__ -prune -print 2>/dev/null || true
+} | wc -l | tr -d ' ')"
+
+if [ "$remaining_count" -gt 0 ]; then
+    printf 'Error: %s root-owned Homebrew Python cache(s) remain.\n' "$remaining_count" >&2
+    exit 1
+fi
