@@ -195,8 +195,19 @@ fi
 # in-place upgrades. We always check the latest release tag against the
 # installed version and act accordingly.
 log "Checking Apple container runtime..."
-latest_tag="$(curl -fsSL https://api.github.com/repos/apple/container/releases/latest \
-    | awk -F\" '/"tag_name":/ { print $4; exit }')"
+container_release_api="https://api.github.com/repos/apple/container/releases/latest"
+container_releases_url="https://github.com/apple/container/releases"
+container_release_json=""
+if container_release_json="$(curl -fsSL "$container_release_api" 2>/dev/null)"; then
+    latest_tag="$(printf '%s\n' "$container_release_json" \
+        | awk -F\" '/"tag_name":/ { print $4; exit }')"
+else
+    warn "GitHub Releases API unavailable — using the public release page."
+    latest_release_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+        "$container_releases_url/latest")"
+    latest_tag="${latest_release_url##*/}"
+fi
+[ -n "$latest_tag" ] || die "Could not resolve the latest Apple container release."
 latest_ver="${latest_tag#v}"
 
 if command -v container >/dev/null 2>&1; then
@@ -218,9 +229,21 @@ fi
 
 if [ "${install_container:-0}" = "1" ]; then
     log "Installing Apple container runtime ($latest_tag)..."
-    pkg_url="$(curl -fsSL https://api.github.com/repos/apple/container/releases/latest \
+    pkg_url="$(printf '%s\n' "$container_release_json" \
         | grep -oE 'https://[^"]+\.pkg' \
-        | head -n1)"
+        | grep -v 'unsigned' \
+        | head -n1 || true)"
+    if [ -z "$pkg_url" ]; then
+        pkg_path="$(curl -fsSL "$container_releases_url/expanded_assets/$latest_tag" \
+            | grep -oE 'href="[^"]+\.pkg"' \
+            | cut -d\" -f2 \
+            | grep -v 'unsigned' \
+            | head -n1 || true)"
+        case "$pkg_path" in
+            https://*) pkg_url="$pkg_path" ;;
+            /*) pkg_url="https://github.com$pkg_path" ;;
+        esac
+    fi
     [ -n "$pkg_url" ] || die "Could not resolve container .pkg URL from GitHub."
     tmp_pkg="$(mktemp -t container).pkg"
     log "Downloading $pkg_url"
