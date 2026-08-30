@@ -24,7 +24,7 @@ Commands:
     bootstrap   Set up or reconcile the complete workstation
     rebuild     Apply the current Nix configuration
     update      Update Nix, Homebrew, and the stable oMLX app
-    doctor      Check oMLX health; add --fix to repair ownership
+    doctor      Check oMLX and Hermes; add --fix to repair services
     omlx        Install, update, and control the oMLX app/server
     hermes      Control or chat with the Hermes container
     uninstall   Remove one imperative component, data-safe by default

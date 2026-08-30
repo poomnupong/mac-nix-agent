@@ -7,6 +7,7 @@
 
   # Let Home Manager manage itself
   programs.home-manager.enable = true;
+  manual.manpages.enable = false;
 
   # ── CLI packages ──────────────────────────────────────────────
   home.packages = with pkgs; [
@@ -39,6 +40,26 @@
     nerd-fonts.fira-code
   ];
 
+  # Apple container services are user-scoped and do not start containers after
+  # reboot. Reconcile the runtime and Hermes container once the user logs in.
+  launchd.agents.mana-hermes = {
+    enable = true;
+    config = {
+      ProgramArguments = [
+        "/Users/${username}/repo/mana/hermes/run.sh"
+        "up"
+      ];
+      EnvironmentVariables = {
+        HOME = "/Users/${username}";
+        PATH = "/usr/local/bin:/etc/profiles/per-user/${username}/bin:/run/current-system/sw/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+      };
+      RunAtLoad = true;
+      ProcessType = "Background";
+      StandardOutPath = "/Users/${username}/Library/Logs/mana-hermes.log";
+      StandardErrorPath = "/Users/${username}/Library/Logs/mana-hermes.log";
+    };
+  };
+
   # ── Zsh ───────────────────────────────────────────────────────
   programs.zsh = {
     enable = true;
@@ -63,7 +84,7 @@
           'bootstrap:set up or reconcile the complete workstation'
           'rebuild:apply the current Nix configuration'
           'update:update Nix, Homebrew, and the stable oMLX app'
-          'doctor:check oMLX health and optionally repair ownership'
+          'doctor:check oMLX and Hermes and optionally repair services'
           'omlx:install, update, and control the oMLX app/server'
           'hermes:control or chat with the Hermes container'
           'uninstall:remove one imperative component'
@@ -98,7 +119,7 @@
             fi
             ;;
           doctor)
-            _arguments '--fix[repair detected ownership and service issues]'
+            _arguments '--fix[repair detected app, runtime, and container issues]'
             ;;
           update)
             _arguments '--no-flake[skip updating flake inputs]' \

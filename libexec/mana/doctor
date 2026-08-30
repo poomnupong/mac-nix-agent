@@ -1,8 +1,8 @@
 #!/bin/bash
-# mana - health check and repair for the oMLX inference stack
+# mana - health check and repair for the oMLX and Hermes stack
 #
 # Default run only reports. Pass --fix to remove stale launch agents and
-# restart the official app-managed server.
+# restore the app-managed server and containerized Hermes agent.
 #
 # Usage: mana doctor [--fix]
 
@@ -12,6 +12,7 @@ REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 APP="/Applications/oMLX.app"
 APP_CLI="$APP/Contents/MacOS/omlx-cli"
 USER_CLI="$HOME/.omlx/bin/omlx"
+HERMES_RUN="$REPO_DIR/hermes/run.sh"
 PORT=8000
 NIX_LABEL="org.nixos.omlx"
 NIX_PLIST="$HOME/Library/LaunchAgents/${NIX_LABEL}.plist"
@@ -132,6 +133,54 @@ if [ "$FIX" -eq 1 ] && [ -d "$APP" ]; then
         "$cli" restart >/dev/null 2>&1 \
             && fixmsg "restarted the app-managed server" \
             || info "Restart failed; open oMLX.app to inspect its status."
+    fi
+fi
+
+if ! command -v container >/dev/null 2>&1; then
+    bad "Apple container CLI is missing - run 'mana bootstrap'."
+else
+    ok "Apple container CLI is installed."
+    container_ready=0
+    if container system status 2>/dev/null | grep -q 'running'; then
+        ok "Apple container system is running."
+        container_ready=1
+    else
+        bad "Apple container system is not running."
+        if [ "$FIX" -eq 1 ]; then
+            if container system start >/dev/null 2>&1; then
+                fixmsg "started the Apple container system"
+                container_ready=1
+            else
+                info "Container system failed to start; run 'container system start' for details."
+            fi
+        fi
+    fi
+
+    if [ "$container_ready" -eq 1 ]; then
+        hermes_state="missing"
+        if command -v jq >/dev/null 2>&1; then
+            hermes_state="$(container list --all --format json 2>/dev/null \
+                | jq -r --arg id hermes-agent \
+                    '[.[] | select(.configuration.id == $id)][0].status.state // [.[] | select(.configuration.id == $id)][0].status // "missing"' \
+                    2>/dev/null)"
+        fi
+
+        if [ "$hermes_state" = "running" ]; then
+            ok "Hermes container is running."
+        else
+            if [ "$hermes_state" = "missing" ]; then
+                bad "Hermes container is missing."
+            else
+                bad "Hermes container is not running (state: $hermes_state)."
+            fi
+            if [ "$FIX" -eq 1 ]; then
+                if "$HERMES_RUN" up >/dev/null; then
+                    fixmsg "restored the Hermes container"
+                else
+                    info "Hermes repair failed; run 'mana hermes up' for details."
+                fi
+            fi
+        fi
     fi
 fi
 

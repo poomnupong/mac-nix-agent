@@ -31,7 +31,7 @@ ensure_system() {
 }
 
 is_running() {
-    container list --format json 2>/dev/null | jq -e ".[] | select(.configuration.id == \"$1\" and .status == \"running\")" >/dev/null 2>&1
+    container list --format json 2>/dev/null | jq -e ".[] | select(.configuration.id == \"$1\" and (.status.state == \"running\" or .status == \"running\"))" >/dev/null 2>&1
 }
 
 exists() {

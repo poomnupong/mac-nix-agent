@@ -38,7 +38,7 @@ cd ~/repo/mana && ./bin/mana bootstrap
 > | `mana bootstrap` | First-time setup (idempotent). On a fresh Mac run `./bin/mana bootstrap` (PATH isn't wired yet). |
 > | `mana rebuild` | Apply local Nix configuration changes without updating dependencies. |
 > | `mana update` | Bump flake inputs + upgrade Homebrew **verbosely** + `darwin-rebuild` + update/restart the stable oMLX app. |
-> | `mana doctor [--fix]` | Diagnose the oMLX stack (stale launchd agent, port 8000 conflict, service/API health). `--fix` repairs. |
+> | `mana doctor [--fix]` | Diagnose oMLX, the Apple container runtime, and Hermes. `--fix` repairs services and recreates a missing Hermes container. |
 > | `mana omlx <cmd>` | oMLX app install/control: `status`/`install`/`upgrade`/`start`/`stop`/`restart`/`logs`/`models`/`key`. |
 > | `mana hermes [cmd]` | Hermes control: bare = `chat`; also `up`/`down`/`rebuild`/`status`/`dashboard`/`logs`. |
 > | `mana uninstall <c>` | Factory-reset one imperative component (`omlx`/`hermes`/`container`). Data-safe by default; `--purge` removes data, `--keep-models`/`--keep-config` spare parts of it. Never edits the Nix files. |
@@ -67,7 +67,7 @@ cd ~/repo/mana
 mana help                               # discover commands and detailed help
 mana rebuild                            # apply edits to tracked Nix files
 mana update                             # flake/brew update + rebuild + stable oMLX app update
-mana doctor                             # health-check the oMLX stack (add --fix to repair)
+mana doctor                             # health-check the full local stack (add --fix to repair)
 mana hermes up                          # start Hermes agent container
 mana hermes                             # interactive chat (bare = chat)
 ```
@@ -199,6 +199,12 @@ mana hermes rebuild    # rebuild image + restart
 mana hermes dashboard  # open the browser GUI (http://localhost:9119)
 mana hermes logs       # tail container logs
 ```
+
+Home Manager installs a user launch agent that runs the same idempotent
+`mana hermes up` workflow at login. After a reboot, logging in starts the
+Apple container runtime and starts or recreates `hermes-agent`; persistent
+volume and host-mounted state are preserved. Startup output is written to
+`~/Library/Logs/mana-hermes.log`.
 
 ### Use Hermes
 
