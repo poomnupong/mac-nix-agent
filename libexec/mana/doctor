@@ -1,14 +1,14 @@
 #!/bin/bash
-# mac-nix-agent - health check and repair for the oMLX inference stack
+# mana - health check and repair for the oMLX inference stack
 #
 # Default run only reports. Pass --fix to remove stale launch agents and
 # restart the official app-managed server.
 #
-# Usage: mna-doctor [--fix]
+# Usage: mana doctor [--fix]
 
 set -uo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 APP="/Applications/oMLX.app"
 APP_CLI="$APP/Contents/MacOS/omlx-cli"
 USER_CLI="$HOME/.omlx/bin/omlx"
@@ -39,16 +39,16 @@ if ! command -v brew >/dev/null 2>&1; then
     done
 fi
 
-printf "\033[1mmac-nix-agent doctor\033[0m  (mode: %s)\n\n" \
+printf "\033[1mmana doctor\033[0m  (mode: %s)\n\n" \
     "$( [ "$FIX" -eq 1 ] && echo 'REPAIR' || echo 'report-only' )"
 
 if [ -d "$APP" ]; then
     version="$(/usr/bin/defaults read "$APP/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null)"
     ok "Official oMLX.app installed (${version:-unknown version})."
 else
-    bad "Official oMLX.app is missing - run 'mna-omlx install'."
+    bad "Official oMLX.app is missing - run 'mana omlx install'."
     if [ "$FIX" -eq 1 ]; then
-        "$REPO_DIR/bin/mna-omlx" install && fixmsg "installed the latest stable oMLX app"
+        "$REPO_DIR/libexec/mana/omlx" install && fixmsg "installed the latest stable oMLX app"
     fi
 fi
 
@@ -122,7 +122,7 @@ if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
         [ -f "$LOG" ] && info "Last log: $(tail -n1 "$LOG" 2>/dev/null)"
     fi
 else
-    bad "No readable ~/.omlx/settings.json - run mna-bootstrap."
+    bad "No readable ~/.omlx/settings.json - run mana bootstrap."
 fi
 
 if [ "$FIX" -eq 1 ] && [ -d "$APP" ]; then
@@ -140,7 +140,7 @@ if [ "$issues" -eq 0 ]; then
     printf "\033[1;32mAll checks passed.\033[0m\n"
     exit 0
 elif [ "$FIX" -eq 1 ]; then
-    printf "\033[1;33mAttempted repairs for %d issue(s).\033[0m Re-run 'mna-doctor' to confirm.\n" "$issues"
+    printf "\033[1;33mAttempted repairs for %d issue(s).\033[0m Re-run 'mana doctor' to confirm.\n" "$issues"
     exit 0
 else
     printf "\033[1;31mFound %d issue(s).\033[0m Re-run with '--fix' to repair automatically.\n" "$issues"

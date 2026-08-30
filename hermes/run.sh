@@ -82,7 +82,7 @@ sync_omlx_key() {
     local envfile="${SCRIPT_DIR}/.env"
     [ -f "$settings" ] || return 0
     if [ ! -f "$envfile" ]; then
-        echo "Error: missing $envfile; run mna-bootstrap first." >&2
+        echo "Error: missing $envfile; run mana bootstrap first." >&2
         return 1
     fi
     if ! command -v jq >/dev/null 2>&1; then

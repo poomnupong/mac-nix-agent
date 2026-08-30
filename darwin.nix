@@ -34,7 +34,7 @@
   '';
 
   # ── oMLX inference server ──────────────────────────────────────
-  # The official prebuilt macOS app is installed by mna-bootstrap and owns
+  # The official prebuilt macOS app is installed by mana bootstrap and owns
   # the server lifecycle. Keeping it outside Homebrew avoids source builds
   # whose Python downloads may be blocked on managed networks.
 

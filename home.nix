@@ -52,20 +52,66 @@
         eval "$(/opt/homebrew/bin/brew shellenv)"
       fi
 
-      # Repo operations live in <repo>/bin as `mna-*` commands (mna-bootstrap,
-      # mna-update, mna-doctor, mna-omlx). Put them on PATH so they're callable
-      # from anywhere and tab-complete as a group (`mna-<TAB>`).
+      # Mana is the sole public repo command. Its implementations live privately
+      # under libexec/mana and are reached as `mana <command>`.
       # The official oMLX app maintains its CLI shim here.
-      export PATH="$HOME/repo/mac-nix-agent/bin:$HOME/.omlx/bin:$HOME/.local/bin:$PATH"
+      export PATH="$HOME/repo/mana/bin:$HOME/.omlx/bin:$HOME/.local/bin:$PATH"
+
+      _mana() {
+        local -a commands subcommands
+        commands=(
+          'bootstrap:set up or reconcile the complete workstation'
+          'rebuild:apply the current Nix configuration'
+          'update:update Nix, Homebrew, and the stable oMLX app'
+          'doctor:check oMLX health and optionally repair ownership'
+          'omlx:install, update, and control the oMLX app/server'
+          'hermes:control or chat with the Hermes container'
+          'uninstall:remove one imperative component'
+          'help:show command help'
+        )
+        if (( CURRENT == 2 )); then
+          _describe 'mana command' commands
+          return
+        fi
+        case "$words[2]" in
+          help)
+            _describe 'mana command' commands
+            ;;
+          hermes)
+            subcommands=(chat up down rebuild status dashboard logs)
+            _describe 'Hermes command' subcommands
+            ;;
+          omlx)
+            subcommands=(status install upgrade start stop restart logs models key)
+            _describe 'oMLX command' subcommands
+            ;;
+          uninstall)
+            if (( CURRENT == 3 )); then
+              subcommands=(omlx hermes container)
+              _describe 'component' subcommands
+            else
+              _arguments '--purge[also delete component data]' \
+                '--keep-models[preserve oMLX model weights]' \
+                '--keep-config[preserve oMLX settings]' \
+                '--yes[skip confirmation]' \
+                '--dry-run[show actions without changing anything]'
+            fi
+            ;;
+          doctor)
+            _arguments '--fix[repair detected ownership and service issues]'
+            ;;
+          update)
+            _arguments '--no-flake[skip updating flake inputs]' \
+              '--no-brew[skip the explicit Homebrew upgrade]'
+            ;;
+        esac
+      }
+      compdef _mana mana
     '';
     shellAliases = {
-      # Hermes & oMLX lifecycle live in <repo>/bin as `mna-*` commands
-      # (mna-hermes chat/up/down/rebuild/logs, mna-omlx, mna-doctor, …).
-      # Bare `mna-hermes` opens a chat. Kept here only as a cd bookmark:
-
       # Modelops: cd bookmark only. Workflow commands are intentionally NOT aliased
       # — see modelops/README.md and run them yourself to learn the toolchain.
-      modelops = "cd ~/repo/mac-nix-agent/modelops";
+      modelops = "cd ~/repo/mana/modelops";
     };
   };
 

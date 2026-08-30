@@ -20,11 +20,11 @@
 
     # ── Per-machine identity ─────────────────────────────────────
     # Personalization lives in ./local.nix (gitignored), so this file
-    # stays clean for upstream pulls. `bootstrap.sh` generates local.nix
+    # stays clean for upstream pulls. `mana bootstrap` generates local.nix
     # on first run from `id -un` and `scutil --get LocalHostName`. To
     # override manually, create ./local.nix with:
     #   { username = "jane"; hostname = "jane-mbp"; }
-    # then use mna-bootstrap/mna-update to rebuild.
+    # then use mana bootstrap/mana update to rebuild.
     #
     # NOTE: lifecycle scripts build a temporary source from tracked files plus
     # local.nix. Ignored secrets stay out of Nix and the Git index stays clean.

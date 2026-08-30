@@ -1,11 +1,11 @@
 #!/bin/bash
-# mac-nix-agent — Hermes agent control
+# mana — Hermes agent control
 #
 # Wraps hermes/run.sh and the chat/exec invocation behind one memorable
-# command, mirroring `mna-omlx`. With NO argument it opens a chat (the
+# command, mirroring `mana omlx`. With NO argument it opens a chat (the
 # most common interactive action).
 #
-# Usage: mna-hermes [command]
+# Usage: mana hermes [command]
 #   chat       interactive chat (default — exec into the container)
 #   up         create & start the container (with SearXNG built in)
 #   down       stop the container
@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 RUN="$REPO_DIR/hermes/run.sh"
 
 cmd_chat() {
@@ -38,7 +38,7 @@ cmd_dashboard() {
 
     echo "Hermes dashboard: $url"
     [ -n "$user" ] && echo "  login:  ${user} / ${pass}"
-    echo "  change: edit HERMES_DASHBOARD_BASIC_AUTH_PASSWORD in hermes/.env, then 'mna-hermes rebuild'"
+    echo "  change: edit HERMES_DASHBOARD_BASIC_AUTH_PASSWORD in hermes/.env, then 'mana hermes rebuild'"
     echo "  note:   first load may take a moment while the UI builds."
     command -v open >/dev/null 2>&1 && open "$url" || true
 }
@@ -52,5 +52,5 @@ case "${1:-chat}" in
     dashboard) cmd_dashboard ;;
     logs)      exec container logs -f hermes-agent ;;
     -h|--help) sed -n '2,14p' "$0" ;;
-    *) echo "Usage: mna-hermes {chat|up|down|rebuild|status|dashboard|logs}" >&2; exit 1 ;;
+    *) echo "Usage: mana hermes {chat|up|down|rebuild|status|dashboard|logs}" >&2; exit 1 ;;
 esac

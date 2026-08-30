@@ -1,6 +1,6 @@
 #!/bin/bash
-# mac-nix-agent - apply the current nix-darwin configuration
-# Usage: mna-rebuild
+# mana - apply the current nix-darwin configuration
+# Usage: mana rebuild
 
 set -euo pipefail
 
@@ -10,23 +10,23 @@ case "${1:-}" in
     *) echo "Unknown option: $1 (try --help)" >&2; exit 2 ;;
 esac
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_DIR"
 
 [ -f local.nix ] || {
-    echo "local.nix is missing; run mna-bootstrap first." >&2
+    echo "local.nix is missing; run mana bootstrap first." >&2
     exit 1
 }
 
 # Build a temporary flake source from tracked files plus local.nix. This keeps
 # ignored secrets/runtime data out of the Nix store and leaves Git untouched.
-flake_source="$("$REPO_DIR/bin/mna-flake-source")"
+flake_source="$("$REPO_DIR/libexec/mana/flake-source")"
 trap 'rm -rf "$flake_source"' EXIT
 
 echo "Applying nix-darwin flake (sudo)..."
 sudo -k
 sudo -p "Administrator Password: " -v
-"$REPO_DIR/bin/mna-brew-preflight"
+"$REPO_DIR/libexec/mana/brew-preflight"
 if command -v darwin-rebuild >/dev/null 2>&1; then
     sudo darwin-rebuild switch --flake "path:$flake_source"
 else

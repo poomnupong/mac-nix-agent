@@ -3,15 +3,15 @@
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_DIR"
 
 [ -f local.nix ] || {
-    echo "local.nix is missing; run mna-bootstrap first." >&2
+    echo "local.nix is missing; run mana bootstrap first." >&2
     exit 1
 }
 
-flake_source="$(mktemp -d -t mna-flake-source)"
+flake_source="$(mktemp -d -t mana-flake-source)"
 keep_source=0
 cleanup() {
     [ "$keep_source" -eq 1 ] || rm -rf "$flake_source"

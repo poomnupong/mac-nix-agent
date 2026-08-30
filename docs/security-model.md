@@ -18,7 +18,7 @@ Hermes Agent is **autonomous, web-connected, self-modifying, and runs arbitrary 
 
 Running that directly on your Mac means a bad command, a poisoned dependency, or a successful injection has your **whole user account** in reach: `~/.ssh`, `~/.aws`, browser cookies, OneDrive/iCloud sessions, every file you can touch.
 
-This repo's answer: **put the agent in a microVM** and hand it only a few explicit bind mounts. The blast radius becomes the VM plus those mounts, not your home directory. When it gets messy, `mna-hermes rebuild` resets it to clean.
+This repo's answer: **put the agent in a microVM** and hand it only a few explicit bind mounts. The blast radius becomes the VM plus those mounts, not your home directory. When it gets messy, `mana hermes rebuild` resets it to clean.
 
 ---
 
@@ -72,9 +72,9 @@ So you can attach Hermes Desktop to this repo's containerized backend (it alread
 
 For Hermes to control your real desktop or read corporate files, the **agent itself** would have to run on the host (a host-native install), or you'd have to deliberately add a host-bridging backend to the container config. The GUI alone never does that. **The security boundary is the backend; the desktop app is just glass.**
 
-> **You usually don't need the native app.** This repo serves the same `hermes dashboard` as a **browser GUI** — open it with `mna-hermes dashboard`, and it installs nothing on your Mac. The native desktop app, by contrast, lays down a host-side `~/.hermes` agent runtime, so **this repo deliberately doesn't install it** — that's an out-of-scope, do-it-yourself step.
+> **You usually don't need the native app.** This repo serves the same `hermes dashboard` as a **browser GUI** — open it with `mana hermes dashboard`, and it installs nothing on your Mac. The native desktop app, by contrast, lays down a host-side `~/.hermes` agent runtime, so **this repo deliberately doesn't install it** — that's an out-of-scope, do-it-yourself step.
 >
-> To attach the native app anyway: install it yourself (`hermes desktop`, or the DMG from the Hermes site), then in **Settings → Gateway → Remote gateway** point it at `http://127.0.0.1:9119`. Because the container's dashboard binds `0.0.0.0` inside the VM, it engages an auth gate — `mna-bootstrap` already seeds a readable `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` / `_PASSWORD` (and a stable `_SECRET`) into `hermes/.env`; sign in with those. Published only to loopback, basic-auth is acceptable here.
+> To attach the native app anyway: install it yourself (`hermes desktop`, or the DMG from the Hermes site), then in **Settings → Gateway → Remote gateway** point it at `http://127.0.0.1:9119`. Because the container's dashboard binds `0.0.0.0` inside the VM, it engages an auth gate — `mana bootstrap` already seeds a readable `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` / `_PASSWORD` (and a stable `_SECRET`) into `hermes/.env`; sign in with those. Published only to loopback, basic-auth is acceptable here.
 
 ---
 
@@ -87,7 +87,7 @@ For Hermes to control your real desktop or read corporate files, the **agent its
 | Can work on your real projects | Only what you mount | Anything you can touch |
 | Real-desktop "computer use" (mouse/apps) | **No** | **Yes** |
 | Prompt-injection blast radius | VM + bind mounts | Whole user account |
-| Reset to clean | `mna-hermes rebuild` | Reinstall / manual cleanup |
+| Reset to clean | `mana hermes rebuild` | Reinstall / manual cleanup |
 | Good for | Autonomous, web-facing, experimental, untrusted tasks | A deliberate personal assistant on *this* machine |
 
 **Stay containerized when:** you run autonomous/YOLO/cron/gateway modes, let it browse freely, or do anything untrusted — and you value the disposable, reproducible, blast-radius-resettable model. This is the repo's whole thesis.

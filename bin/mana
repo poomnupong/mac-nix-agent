@@ -1,23 +1,24 @@
 #!/bin/bash
-# mac-nix-agent - command index and dispatcher
+# Mana (MAc-Nix-Agent) - command index and dispatcher
 #
 # Usage:
-#   mna [help]                 show available commands
-#   mna help <command>         show detailed command help
-#   mna <command> [arguments]  run an mna command
+#   mana [help]                 show available commands
+#   mana help <command>         show detailed command help
+#   mana <command> [arguments]  run a command
 
 set -euo pipefail
 
-BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+COMMAND_DIR="$REPO_DIR/libexec/mana"
 
 show_help() {
     cat <<'EOF'
-mac-nix-agent (mna)
+Mana (MAc-Nix-Agent)
 
 Usage:
-  mna [help]                 Show this command overview
-  mna help <command>         Show detailed help for a command
-  mna <command> [arguments]  Run a command
+    mana [help]                 Show this command overview
+    mana help <command>         Show detailed help for a command
+    mana <command> [arguments]  Run a command
 
 Commands:
     bootstrap   Set up or reconcile the complete workstation
@@ -29,20 +30,18 @@ Commands:
     uninstall   Remove one imperative component, data-safe by default
 
 Examples:
-  mna help omlx
-  mna omlx status
-  mna doctor --fix
-  mna hermes
-  mna update
-
-The original mna-* commands remain available and behave identically.
+    mana help omlx
+    mana omlx status
+    mana doctor --fix
+    mana hermes
+    mana update
 EOF
 }
 
 command_script() {
     case "$1" in
         bootstrap|rebuild|update|doctor|omlx|hermes|uninstall)
-            printf '%s/mna-%s\n' "$BIN_DIR" "$1"
+            printf '%s/%s\n' "$COMMAND_DIR" "$1"
             ;;
         *)
             return 1
